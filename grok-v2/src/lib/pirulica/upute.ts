@@ -10,7 +10,14 @@ export const UPUTE = {
   ],
   install: "Android: ⋮ → Instaliraj. iPhone: Dijeli → Dodaj na početni zaslon.",
   alarm:
-    "Ako alarm šuti, uključi zvuk i u bateriji stavi Chrome ili Piluricu bez ograničenja.",
+    "Tihi način gasi zvono, ne medije. Alarm svira na glasnoći medija — pojačajte medije, ne zvono. Isključite DND ako je uključen.",
+  naredbe: [
+    "Obavijesti → Dozvoli.",
+    "Pojačajte MEDIJE (ne zvono). Radi i u tihom načinu i u sleepu.",
+    "Baterija → Chrome ili Pilurica → Bez ograničenja.",
+    "Dodaj na početni zaslon (Instaliraj).",
+    "Ne briši podatke stranice — tu su alarmi i lijekovi.",
+  ],
   disclaimer:
     "Ovo nije medicinski savjet. O lijekovima se savjetujte s liječnikom ili ljekarnikom.",
 } as const;

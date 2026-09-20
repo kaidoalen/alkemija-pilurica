@@ -1,4 +1,4 @@
-/* Pilurica alarm service worker — no page caching, only wake + notify. */
+/* Pilurica alarm SW v2.4 — wake, notify, retry until the dose is handled. */
 const DB_NAME = "pirulica";
 const DB_STORE = "kv";
 
@@ -17,6 +17,14 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil(onClick(event));
+});
+
+self.addEventListener("notificationclose", (event) => {
+  const data = event.notification.data || {};
+  if (data.acked) return;
+  event.waitUntil(
+    sleep(8000).then(() => scanDue()),
+  );
 });
 
 self.addEventListener("periodicsync", (event) => {
@@ -39,16 +47,24 @@ self.addEventListener("message", (event) => {
     return;
   }
   if (msg.type === "notify") {
-    event.waitUntil(showAlarm(msg.payload || {}));
-  }
-  if (msg.type === "close" && msg.tag) {
     event.waitUntil(
-      self.registration
-        .getNotifications({ tag: msg.tag })
-        .then((list) => list.forEach((n) => n.close())),
+      showAlarm(msg.payload || {}).then(() => pingClients(msg.payload?.occurrenceId)),
     );
   }
+  if (msg.type === "schedule") {
+    event.waitUntil(onSchedule(msg.payload || {}));
+  }
+  if (msg.type === "close" && msg.tag) {
+    event.waitUntil(closeTagged(msg.tag));
+  }
+  if (msg.type === "badge") {
+    event.waitUntil(setBadge(Number(msg.count) || 0));
+  }
 });
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 async function onPush(event) {
   let occurrenceId = "";
@@ -73,6 +89,7 @@ async function onPush(event) {
       body: match.dose ? `${match.name} · ${match.dose}` : match.name,
       occurrenceId: match.occurrenceId,
     });
+    await pingClients(match.occurrenceId);
     return;
   }
 
@@ -81,47 +98,131 @@ async function onPush(event) {
     body: "Otvori aplikaciju i potvrdi dozu.",
     occurrenceId: occurrenceId || `tick:${now}`,
   });
+  await pingClients(occurrenceId);
+}
+
+async function onSchedule(payload) {
+  const upcoming = payload.upcoming || [];
+  await scanDueFrom(upcoming, payload.ringingId);
+  await scheduleTriggers(upcoming);
 }
 
 async function scanDue() {
   const schedule = await readSchedule();
   const upcoming = schedule?.upcoming || [];
+  await scanDueFrom(upcoming, schedule?.ringingId);
+}
+
+async function scanDueFrom(upcoming, ringingId) {
   const now = Date.now();
-  const due = upcoming.filter(
-    (d) => d.at <= now + 15_000 && d.at >= now - 2 * 60 * 60 * 1000,
+  const due = (upcoming || []).filter(
+    (d) => d.at <= now + 20_000 && d.at >= now - 2 * 60 * 60 * 1000,
   );
+  if (ringingId && !due.some((d) => d.occurrenceId === ringingId)) {
+    const ringing = (upcoming || []).find((d) => d.occurrenceId === ringingId);
+    if (ringing) due.push(ringing);
+  }
   for (const dose of due) {
     await showAlarm({
       title: "Vrijeme za piluricu",
       body: dose.dose ? `${dose.name} · ${dose.dose}` : dose.name,
       occurrenceId: dose.occurrenceId,
     });
+    await pingClients(dose.occurrenceId);
+  }
+}
+
+async function scheduleTriggers(upcoming) {
+  const TT = self.TimestampTrigger;
+  if (typeof TT !== "function") return;
+  const now = Date.now();
+  for (const d of upcoming || []) {
+    if (!d.at || d.at <= now + 5_000) continue;
+    try {
+      await self.registration.showNotification("Vrijeme za piluricu", {
+        body: d.dose ? `${d.name} · ${d.dose}` : d.name,
+        tag: `pilurica-at-${d.occurrenceId}`,
+        showTrigger: new TT(d.at),
+        renotify: true,
+        requireInteraction: true,
+        silent: false,
+        badge: "/icon-192.png",
+        icon: "/icon-512.png",
+        data: {
+          occurrenceId: d.occurrenceId,
+          url: `/?alarm=${encodeURIComponent(d.occurrenceId)}`,
+        },
+      });
+    } catch {
+      /* API blocked */
+    }
   }
 }
 
 async function showAlarm(payload) {
   const occurrenceId = payload.occurrenceId || "alarm";
   const title = payload.title || "Vrijeme za piluricu";
-  const body = payload.body || "Otvori aplikaciju i uzmi lijek.";
+  const clock = new Date().toLocaleTimeString("hr-HR", { hour: "2-digit", minute: "2-digit" });
+  const body = `${payload.body || "Otvori aplikaciju i uzmi lijek."} · ${clock}`;
   await self.registration.showNotification(title, {
     body,
     tag: `pilurica-${occurrenceId}`,
     renotify: true,
     requireInteraction: true,
     silent: false,
-    vibrate: [400, 160, 400, 160, 700, 200, 400],
+    vibrate: [400, 160, 400, 160, 700, 200, 400, 200, 900],
     badge: "/icon-192.png",
-    icon: "/icon-192.png",
+    icon: "/icon-512.png",
     timestamp: Date.now(),
     actions: [
       { action: "taken", title: "Uzmi" },
-      { action: "snooze", title: "Odgodi" },
+      { action: "snooze", title: "Odgodi 15 min" },
     ],
     data: {
       occurrenceId,
       url: `/?alarm=${encodeURIComponent(occurrenceId)}`,
     },
   });
+  await setBadge(Math.max(1, await countAlarmNotes()));
+}
+
+async function pingClients(occurrenceId) {
+  if (!occurrenceId) return;
+  const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  for (const client of windows) {
+    client.postMessage({ type: "sw-alarm", occurrenceId });
+  }
+}
+
+async function setBadge(n) {
+  try {
+    if (n > 0) await self.navigator.setAppBadge(n);
+    else await self.navigator.clearAppBadge();
+  } catch {
+    /* no Badge API */
+  }
+}
+
+async function countAlarmNotes() {
+  try {
+    const list = await self.registration.getNotifications();
+    return list.filter((n) => String(n.tag || "").startsWith("pilurica-")).length;
+  } catch {
+    return 1;
+  }
+}
+
+async function closeTagged(tag) {
+  const list = await self.registration.getNotifications({ tag });
+  for (const n of list) {
+    try {
+      n.data = { ...(n.data || {}), acked: true };
+    } catch {
+      /* data may be frozen */
+    }
+    n.close();
+  }
+  await setBadge(await countAlarmNotes());
 }
 
 async function onClick(event) {

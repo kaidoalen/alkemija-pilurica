@@ -43,6 +43,8 @@ import { PeoplePanel } from "./people-panel";
 import { SettingsPanel } from "./settings-panel";
 import { TodayPanel } from "./today-panel";
 import { RefreshCard, UpdateNotice } from "./update-banner";
+import { LockArm, needsLockArm } from "./lock-arm";
+import { ensureLockAlarms } from "@/lib/pirulica/push-client";
 
 type Tab = "today" | "meds" | "people" | "settings";
 type EditMode = "catalog" | "copy";
@@ -72,6 +74,8 @@ export function PiluricaApp() {
   const [updating, setUpdating] = useState(false);
   const [recoverNote, setRecoverNote] = useState<string | null>(null);
   const [pullOpen, setPullOpen] = useState(false);
+  const [viewPersonId, setViewPersonId] = useState<string | null>(null);
+  const [lockArm, setLockArm] = useState(() => !needsWhatsNew() && needsLockArm());
 
   useEffect(() => {
     let cancelled = false;
@@ -103,6 +107,8 @@ export function PiluricaApp() {
     if (params.get("tab") === "osobe" || params.get("tab") === "people") {
       setTab("people");
     }
+    const who = params.get("osoba") || params.get("person");
+    if (who) setViewPersonId(who);
     return () => {
       cancelled = true;
       stopListen();
@@ -154,6 +160,13 @@ export function PiluricaApp() {
     setEditing(med);
   }
 
+  function openPerson(id: string) {
+    setCurrentPerson(id);
+    setViewPersonId(id);
+    setEditing(undefined);
+    setTab("people");
+  }
+
   if (whatsNew) {
     return (
       <div className="min-h-dvh bg-paper text-ink">
@@ -161,8 +174,19 @@ export function PiluricaApp() {
           onDismiss={() => {
             dismissWhatsNew();
             setWhatsNew(false);
+            void ensureLockAlarms().then((ok) => {
+              if (!ok && needsLockArm()) setLockArm(true);
+            });
           }}
         />
+      </div>
+    );
+  }
+
+  if (lockArm) {
+    return (
+      <div className="min-h-dvh bg-paper text-ink">
+        <LockArm onDone={() => setLockArm(false)} />
       </div>
     );
   }
@@ -194,7 +218,7 @@ export function PiluricaApp() {
                       <button
                         key={p.id}
                         type="button"
-                        onClick={() => setCurrentPerson(p.id)}
+                        onClick={() => openPerson(p.id)}
                         className={cn(
                           "h-8 rounded-full px-3 text-xs font-medium",
                           on ? "bg-ink text-surface" : "bg-cream text-muted",
@@ -228,11 +252,13 @@ export function PiluricaApp() {
                 snap={snap}
                 meds={mine}
                 personName={person.name}
+                personId={person.id}
                 now={now}
                 onTaken={takeById}
                 onAdd={() => openCatalog(null)}
                 onSimulate={() => void testAlarmNow()}
                 onRecover={() => void runRecover()}
+                onOpenPerson={openPerson}
               />
             </div>
           ) : null}
@@ -243,10 +269,16 @@ export function PiluricaApp() {
               people={snap.people}
               onAdd={() => openCatalog(null)}
               onEdit={(m) => openCatalog(m)}
+              onOpenPerson={openPerson}
             />
           ) : null}
           {tab === "people" ? (
-            <PeoplePanel snap={snap} onEditMed={openCopy} />
+            <PeoplePanel
+              snap={snap}
+              viewId={viewPersonId}
+              onViewId={setViewPersonId}
+              onEditMed={openCopy}
+            />
           ) : null}
           {tab === "settings" ? (
             <SettingsPanel snap={snap} onSeed={seedExamples} onPullOld={() => void runRecover()} />
@@ -268,7 +300,10 @@ export function PiluricaApp() {
                 <button
                   key={id}
                   type="button"
-                  onClick={() => setTab(id)}
+                  onClick={() => {
+                    if (id === "people" && tab === "people") setViewPersonId(null);
+                    setTab(id);
+                  }}
                   className={cn(
                     "flex h-12 flex-col items-center justify-center gap-0.5 rounded-[14px] text-[11px] font-medium",
                     on ? "bg-cream text-ink" : "text-muted",

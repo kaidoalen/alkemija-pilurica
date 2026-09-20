@@ -71,12 +71,50 @@ export function MedForm({
   const [pickDays, setPickDays] = useState(() => (initial?.days.length ?? 7) < 7);
 
   const askStock = !hideOwner || !initial;
+  const forPerson = Boolean(initial) && !hideOwner;
   const canSave = name.trim().length > 0 && times.length > 0 && days.length > 0;
 
   const sortedTimes = useMemo(
     () => [...times].sort((a, b) => a.localeCompare(b)),
     [times],
   );
+
+  const dirty = useMemo(() => {
+    if (!initial) return true;
+    const stockInit = initial.stock != null ? String(initial.stock) : "";
+    const photoInit = photosOf(initial)
+      .map((p) => p.src)
+      .join("|");
+    return (
+      name.trim() !== initial.name ||
+      form.trim() !== (initial.form || "tablete") ||
+      notes.trim() !== initial.notes ||
+      color !== initial.color ||
+      sortedTimes.join("|") !== [...initial.times].sort().join("|") ||
+      [...days].sort((a, b) => a - b).join("|") !==
+        [...initial.days].sort((a, b) => a - b).join("|") ||
+      active !== initial.active ||
+      owner !== initial.personId ||
+      stock !== stockInit ||
+      Math.max(1, Number(perDose) || 1) !== (initial.tabletsPerDose || 1) ||
+      (expiry || "") !== (initial.expiry || "") ||
+      photoInit !== photos.map((p) => p.src).join("|")
+    );
+  }, [
+    initial,
+    name,
+    form,
+    notes,
+    color,
+    sortedTimes,
+    days,
+    active,
+    owner,
+    stock,
+    perDose,
+    expiry,
+    photos,
+  ]);
 
   function toggleTime(hm: string) {
     setTimes((cur) => (cur.includes(hm) ? cur.filter((t) => t !== hm) : [...cur, hm]));
@@ -425,18 +463,22 @@ export function MedForm({
           </div>
         )}
 
-        <Button size="lg" className="h-14 w-full text-base" disabled={!canSave} onClick={save}>
-          Spremi i podsjeti me
-        </Button>
-        {!canSave ? (
-          <p className="text-center text-sm text-muted">
-            {!name.trim()
-              ? "Upišite naziv lijeka."
-              : times.length === 0
-                ? "Odaberite barem jedno doba dana."
-                : "Odaberite barem jedan dan."}
-          </p>
-        ) : null}
+        {forPerson ? null : (
+          <>
+            <Button size="lg" className="h-14 w-full text-base" disabled={!canSave} onClick={save}>
+              Spremi i podsjeti me
+            </Button>
+            {!canSave ? (
+              <p className="text-center text-sm text-muted">
+                {!name.trim()
+                  ? "Upišite naziv lijeka."
+                  : times.length === 0
+                    ? "Odaberite barem jedno doba dana."
+                    : "Odaberite barem jedan dan."}
+              </p>
+            ) : null}
+          </>
+        )}
 
         <button
           type="button"
@@ -508,6 +550,19 @@ export function MedForm({
           </Button>
         ) : null}
       </div>
+
+      {forPerson && dirty ? (
+        <div className="border-t border-line bg-paper px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <Button
+            size="lg"
+            className="h-14 w-full text-base"
+            disabled={!canSave}
+            onClick={save}
+          >
+            Spremi postavke
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

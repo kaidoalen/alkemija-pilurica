@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { nid } from "./ids";
-import type { PlannedDose } from "./schedule";
+import { nextRingCount, type PlannedDose } from "./schedule";
 import {
   BACKUP_KEY,
   DEFAULT_PERSON,
@@ -51,6 +51,10 @@ function emit() {
 
 function persist() {
   if (typeof localStorage === "undefined") return;
+  const unique = dedupePersonMeds(state.meds);
+  if (unique.length !== state.meds.length) {
+    state = { ...state, meds: unique };
+  }
   const payload = persistable();
   const light = {
     ...payload,
@@ -912,7 +916,7 @@ function fromParsed(parsed: Partial<Snapshot> | ExportPayload | Record<string, u
   const cleaned = dropUndefinedJa(people, withPhotos, asSettings(rec.settings ?? rec), jaDefined);
   return {
     people: cleaned.people,
-    meds: cleaned.meds,
+    meds: dedupePersonMeds(cleaned.meds),
     logs: Array.isArray(logs) ? logs : [],
     snoozes: Array.isArray(snoozes) ? snoozes : [],
     settings: cleaned.settings,
@@ -1025,7 +1029,7 @@ function mergeSnapshots(base: Snapshot, extra: Snapshot): Snapshot {
   const cleaned = dropUndefinedJa(people, meds, settings, extraDefinesJa);
   return {
     people: cleaned.people,
-    meds: cleaned.meds,
+    meds: dedupePersonMeds(cleaned.meds),
     logs,
     snoozes: extra.snoozes.length ? extra.snoozes : base.snoozes,
     settings: cleaned.settings,
@@ -1501,6 +1505,25 @@ export function medKey(med: Pick<Med, "name">): string {
   return med.name.trim().toLowerCase();
 }
 
+function personMedSlot(med: Pick<Med, "name" | "personId">): string {
+  return `${med.personId}::${medKey(med)}`;
+}
+
+/** Jedan naziv lijeka smije stajati samo jednom uz jednu osobu. */
+export function dedupePersonMeds(meds: Med[]): Med[] {
+  const by = new Map<string, Med>();
+  for (const m of meds) {
+    const k = personMedSlot(m);
+    const prev = by.get(k);
+    if (!prev) {
+      by.set(k, m);
+      continue;
+    }
+    by.set(k, richerMed(prev, m));
+  }
+  return [...by.values()];
+}
+
 export function catalogMeds(snap: Snapshot = state): Med[] {
   const byKey = new Map<string, Med>();
   for (const m of snap.meds) {
@@ -1589,6 +1612,19 @@ export function removeCatalogMed(med: Med) {
 }
 
 export function upsertMed(med: Med) {
+  const key = medKey(med);
+  const twin = state.meds.find(
+    (m) => m.personId === med.personId && medKey(m) === key && m.id !== med.id,
+  );
+  if (twin) {
+    const merged = richerMed(twin, { ...med, id: twin.id, personId: twin.personId });
+    set({
+      meds: state.meds
+        .filter((m) => m.id !== med.id)
+        .map((m) => (m.id === twin.id ? merged : m)),
+    });
+    return;
+  }
   const exists = state.meds.some((m) => m.id === med.id);
   set({
     meds: exists ? state.meds.map((m) => (m.id === med.id ? med : m)) : [...state.meds, med],
@@ -1704,6 +1740,7 @@ export function snoozeDose(dose: PlannedDose, minutes: number, now = Date.now())
     ...dose,
     occurrenceId: `${dose.medId}:snooze:${at}`,
     at,
+    ringCount: nextRingCount(dose),
   };
   const log: DoseLog = {
     id: `${dose.occurrenceId}:snooze`,
@@ -1723,8 +1760,14 @@ export function snoozeDose(dose: PlannedDose, minutes: number, now = Date.now())
 }
 
 export function setRinging(dose: PlannedDose | null) {
-  if (dose && state.ringing?.occurrenceId === dose.occurrenceId) return;
   set({ ringing: dose });
+}
+
+/** Queue a future alarm (test or snooze) so push + SW see it when the phone is locked. */
+export function queueAlarm(dose: PlannedDose) {
+  set({
+    snoozes: [...state.snoozes.filter((s) => s.occurrenceId !== dose.occurrenceId), dose],
+  });
 }
 
 export function patchSettings(patch: Partial<Settings>) {

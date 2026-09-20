@@ -11,6 +11,8 @@ export type PlannedDose = {
   color: Med["color"];
   tabletsPerDose: number;
   at: number;
+  /** How many ring cycles this firing. Starts at 2, +1 after each 15 min snooze. */
+  ringCount?: number;
 };
 
 export function planWindow(
@@ -117,12 +119,19 @@ export function opaqueFires(
     (s) => s.at >= now - 30_000 && s.at <= now + horizonMs,
   );
   const retries: { id: string; at: number }[] = [];
+  const offsets = [
+    0, 30_000, 60_000, 120_000, 240_000, 480_000, 900_000, 1_500_000, 2_400_000, 3_600_000,
+  ];
   for (const dose of [...planned, ...extra]) {
-    retries.push({ id: `${dose.occurrenceId}:0`, at: dose.at });
-    retries.push({ id: `${dose.occurrenceId}:1`, at: dose.at + 60_000 });
-    retries.push({ id: `${dose.occurrenceId}:2`, at: dose.at + 180_000 });
+    offsets.forEach((off, i) => {
+      retries.push({ id: `${dose.occurrenceId}:${i}`, at: dose.at + off });
+    });
   }
   return retries.slice(0, 180);
+}
+
+export function nextRingCount(dose: PlannedDose): number {
+  return Math.min(8, (dose.ringCount ?? 2) + 1);
 }
 
 export function remainingLabel(at: number, now = Date.now()): string {

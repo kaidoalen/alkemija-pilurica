@@ -17,11 +17,8 @@ import { Switch } from "@/components/ui/switch";
 import { unlockAudio } from "@/lib/pirulica/audio";
 import { buildIcs, shareOrDownloadIcs } from "@/lib/pirulica/calendar";
 import { testAlarmIn, testAlarmNow } from "@/lib/pirulica/engine";
-import {
-  getHealth,
-  isInstalled,
-  requestNotificationPermission,
-} from "@/lib/pirulica/notifications";
+import { ensureLockAlarms } from "@/lib/pirulica/push-client";
+import { getHealth, isInstalled } from "@/lib/pirulica/notifications";
 import {
   applyAppUpdate,
   exportFullPayload,
@@ -94,9 +91,7 @@ export function SettingsPanel({
     setBusy(true);
     try {
       await unlockAudio();
-      await requestNotificationPermission();
-      const { subscribePush } = await import("@/lib/pirulica/push-client");
-      await subscribePush();
+      await ensureLockAlarms();
       await refresh();
     } finally {
       setBusy(false);
@@ -186,6 +181,18 @@ export function SettingsPanel({
       </div>
 
       <HowTo />
+
+      <section className="rounded-[24px] bg-surface px-4 py-4 shadow-[var(--shadow-card)]">
+        <h3 className="text-sm font-medium text-ink">Naredbe za telefon</h3>
+        <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-sm text-muted">
+          {UPUTE.naredbe.map((row) => (
+            <li key={row} className="text-pretty">
+              {row}
+            </li>
+          ))}
+        </ol>
+        <p className="mt-3 text-xs text-muted text-pretty">{UPUTE.alarm}</p>
+      </section>
 
       <section className="rounded-[24px] bg-surface px-4 py-2 shadow-[var(--shadow-card)]">
         <StatusRow

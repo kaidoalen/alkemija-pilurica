@@ -1,18 +1,21 @@
-import { startAlarmSound, stopAlarmSound, stopVibrate, unlockAudio, vibrateAlarm } from "./audio";
+import { startAlarmSound, startSleepGuard, stopAlarmSound, stopVibrate, unlockAudio, vibrateAlarm } from "./audio";
 import { writeSchedule } from "./idb";
 import {
   closeDoseNotification,
   registerServiceWorker,
   requestNotificationPermission,
+  setIconBadge,
   showDoseNotification,
   showStockNotification,
 } from "./notifications";
-import { dueUnacked, nextUpcoming, type PlannedDose } from "./schedule";
+import { dueUnacked, nextRingCount, nextUpcoming, type PlannedDose } from "./schedule";
 import { daysOfStock, stockWarning } from "./stock";
 import {
   getSnapshot,
   markMissed,
   markTaken,
+  patchSettings,
+  queueAlarm,
   setRinging,
   snoozeDose,
   subscribe,
@@ -25,6 +28,11 @@ let tickTimer: number | null = null;
 let vibrateLoop: number | null = null;
 let wakeLock: WakeLockSentinel | null = null;
 const fired = new Set<string>();
+let rangAt = 0;
+let lastBurstAt = 0;
+const BASE_TITLE = typeof document === "undefined" ? "Pilurica" : document.title || "Pilurica";
+const NAG_MS = 20_000;
+const ESCALATE_MS = 15 * 60 * 1000;
 const STOCK_NOTE_KEY = "pilurica-stock-notified";
 
 function stockSeen(): Set<string> {
@@ -70,6 +78,46 @@ function checkStockAlerts() {
   }
 }
 
+function alarmTitle(name: string) {
+  if (typeof document === "undefined") return;
+  document.title = `⏰ ${name} — Pilurica`;
+}
+
+function restoreTitle() {
+  if (typeof document === "undefined") return;
+  document.title = BASE_TITLE.includes("Pilurica") ? "Pilurica" : BASE_TITLE;
+}
+
+async function requestBackgroundScan() {
+  try {
+    const reg = await navigator.serviceWorker?.ready;
+    const sync = (
+      reg as ServiceWorkerRegistration & {
+        sync?: { register: (tag: string) => Promise<void> };
+      }
+    )?.sync;
+    await sync?.register("pilurica-scan");
+  } catch {
+    /* unsupported */
+  }
+}
+
+function burst(dose: PlannedDose, opts?: { forceSound?: boolean }) {
+  const snap = getSnapshot();
+  const rings = Math.min(8, dose.ringCount ?? 2);
+  const mustSound =
+    opts?.forceSound || snap.settings.soundEnabled || isTestDose(dose);
+  lastBurstAt = Date.now();
+  alarmTitle(dose.name);
+  if (mustSound) void startAlarmSound(rings);
+  startVibrateLoop(rings);
+  void requestWakeLock();
+  void showDoseNotification(dose).catch(() => undefined);
+  const due = dueUnacked(snap.meds, snap.logs, snap.snoozes).length;
+  void setIconBadge(Math.max(1, due || 1));
+  void requestBackgroundScan();
+}
+
 function clearTimer() {
   if (timer != null) {
     window.clearTimeout(timer);
@@ -77,21 +125,27 @@ function clearTimer() {
   }
 }
 
-function startVibrateLoop() {
+function startVibrateLoop(rings = 2) {
   stopVibrateLoop();
-  vibrateAlarm();
-  vibrateLoop = window.setInterval(() => {
-    if (!getSnapshot().ringing) {
+  let left = Math.max(1, Math.min(8, rings));
+  const tick = () => {
+    const ringing = getSnapshot().ringing;
+    if (!ringing || left <= 0) {
       stopVibrateLoop();
       return;
     }
-    if (getSnapshot().settings.vibrateEnabled) vibrateAlarm();
-  }, 1400);
+    if (getSnapshot().settings.vibrateEnabled || isTestDose(ringing)) {
+      vibrateAlarm();
+    }
+    left -= 1;
+    if (left > 0) vibrateLoop = window.setTimeout(tick, 1400);
+  };
+  tick();
 }
 
 function stopVibrateLoop() {
   if (vibrateLoop != null) {
-    window.clearInterval(vibrateLoop);
+    window.clearTimeout(vibrateLoop);
     vibrateLoop = null;
   }
   stopVibrate();
@@ -139,21 +193,21 @@ export async function fireDose(dose: PlannedDose, opts?: { forceSound?: boolean 
   if (snap.logs.some((l) => l.id === dose.occurrenceId && l.result === "taken")) {
     return;
   }
+  if (snap.ringing?.occurrenceId === dose.occurrenceId) {
+    burst(snap.ringing, opts);
+    return;
+  }
   fired.add(dose.occurrenceId);
   const personName =
     snap.people.find((p) => p.id === dose.personId)?.name || dose.personName;
-  const labeled: PlannedDose = { ...dose, personName };
+  const labeled: PlannedDose = {
+    ...dose,
+    personName,
+    ringCount: Math.min(8, dose.ringCount ?? 2),
+  };
+  rangAt = Date.now();
   setRinging(labeled);
-  try {
-    await showDoseNotification(labeled);
-  } catch {
-    /* overlay still rings */
-  }
-  const mustSound =
-    opts?.forceSound || snap.settings.soundEnabled || isTestDose(dose);
-  if (mustSound) await startAlarmSound();
-  if (snap.settings.vibrateEnabled || isTestDose(dose)) startVibrateLoop();
-  await requestWakeLock();
+  burst(labeled, opts);
 }
 
 export async function resolveTaken(dose: PlannedDose) {
@@ -162,6 +216,7 @@ export async function resolveTaken(dose: PlannedDose) {
   stopAlarmSound();
   stopVibrateLoop();
   releaseWakeLock();
+  restoreTitle();
   await closeDoseNotification(dose.occurrenceId);
   const { ackOccurrence } = await import("./push-client");
   await ackOccurrence(dose.occurrenceId);
@@ -176,6 +231,7 @@ export async function resolveSnooze(dose: PlannedDose, minutes?: number) {
   stopAlarmSound();
   stopVibrateLoop();
   releaseWakeLock();
+  restoreTitle();
   await closeDoseNotification(dose.occurrenceId);
   await persistAndSync();
   armNext();
@@ -187,6 +243,7 @@ export async function resolveDismiss(dose: PlannedDose) {
   stopAlarmSound();
   stopVibrateLoop();
   releaseWakeLock();
+  restoreTitle();
   await closeDoseNotification(dose.occurrenceId);
   await persistAndSync();
   armNext();
@@ -212,11 +269,11 @@ function armNext() {
 }
 
 function onVisibility() {
+  void unlockAudio();
+  void persistAndSync();
   if (document.visibilityState === "visible") {
-    if (getSnapshot().ringing && getSnapshot().settings.soundEnabled) {
-      void startAlarmSound();
-      void requestWakeLock();
-    }
+    const ringing = getSnapshot().ringing;
+    if (ringing) burst(ringing, { forceSound: true });
     armNext();
   }
 }
@@ -234,7 +291,11 @@ function onMessage(event: MessageEvent) {
   }
   if (msg.type === "sw-open" && msg.occurrenceId) {
     const dose = findDose(msg.occurrenceId);
-    if (dose) void fireDose(dose);
+    if (dose) void fireDose(dose, { forceSound: true });
+  }
+  if (msg.type === "sw-alarm" && msg.occurrenceId) {
+    const dose = findDose(msg.occurrenceId);
+    if (dose) void fireDose(dose, { forceSound: true });
   }
 }
 
@@ -253,8 +314,25 @@ function findDose(occurrenceId: string): PlannedDose | null {
 export function startEngine() {
   if (armed || typeof window === "undefined") return;
   armed = true;
+  const unlockOnce = () => {
+    void unlockAudio();
+    patchSettings({ soundEnabled: true, vibrateEnabled: true });
+    void import("./push-client").then((m) => m.ensureLockAlarms()).catch(() => undefined);
+  };
+  document.addEventListener("pointerdown", unlockOnce, { once: true, passive: true });
+  document.addEventListener("keydown", unlockOnce, { once: true, passive: true });
   void registerServiceWorker();
+  patchSettings({ soundEnabled: true, vibrateEnabled: true });
+  try {
+    void navigator.storage?.persist?.();
+  } catch {
+    /* ignore */
+  }
+  if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+    void import("./push-client").then((m) => m.ensureLockAlarms()).catch(() => undefined);
+  }
   void persistAndSync();
+  startSleepGuard();
   armNext();
   checkStockAlerts();
   document.addEventListener("visibilitychange", onVisibility);
@@ -278,13 +356,25 @@ export function startEngine() {
   tickTimer = window.setInterval(() => {
     const snap = getSnapshot();
     if (snap.ringing) {
-      if (Date.now() - snap.ringing.at > 15 * 60 * 1000) {
-        void resolveDismiss(snap.ringing);
+      const now = Date.now();
+      if (now - rangAt >= ESCALATE_MS) {
+        const next: PlannedDose = {
+          ...snap.ringing,
+          ringCount: nextRingCount(snap.ringing),
+          at: now,
+        };
+        rangAt = now;
+        setRinging(next);
+        burst(next, { forceSound: true });
+        return;
+      }
+      if (now - lastBurstAt >= NAG_MS) {
+        burst(snap.ringing, { forceSound: true });
       }
       return;
     }
     armNext();
-  }, 15_000);
+  }, 5_000);
 }
 
 function makeTestDose(at: number): PlannedDose {
@@ -304,7 +394,6 @@ function makeTestDose(at: number): PlannedDose {
 /** Immediate ring — must be called from a tap so the phone allows sound. */
 export async function testAlarmNow() {
   await unlockAudio();
-  void requestNotificationPermission();
   const dose = makeTestDose(Date.now());
   fired.delete(dose.occurrenceId);
   if (testTimer != null) {
@@ -312,14 +401,23 @@ export async function testAlarmNow() {
     testTimer = null;
   }
   await fireDose(dose, { forceSound: true });
+  void requestNotificationPermission();
 }
 
 export async function testAlarmIn(seconds: number) {
   await unlockAudio();
-  void requestNotificationPermission();
+  patchSettings({ soundEnabled: true, vibrateEnabled: true });
+  try {
+    const { ensureLockAlarms } = await import("./push-client");
+    await ensureLockAlarms();
+  } catch {
+    /* preview */
+  }
   const at = Date.now() + seconds * 1000;
   const dose = makeTestDose(at);
   fired.delete(dose.occurrenceId);
+  queueAlarm(dose);
+  await persistAndSync();
   if (testTimer != null) window.clearTimeout(testTimer);
   testTimer = window.setTimeout(() => {
     testTimer = null;

@@ -10,12 +10,14 @@ export function MedsPanel({
   people,
   onAdd,
   onEdit,
+  onOpenPerson,
 }: {
   meds: Med[];
   allMeds: Med[];
   people: Person[];
   onAdd: () => void;
   onEdit: (med: Med) => void;
+  onOpenPerson: (id: string) => void;
 }) {
   const names = new Map(people.map((p) => [p.id, p.name]));
   return (
@@ -43,11 +45,13 @@ export function MedsPanel({
         <ul className="space-y-2">
           {meds.map((med) => {
             const copies = allMeds.filter((m) => medKey(m) === medKey(med));
-            const who = copies.map((m) => {
-              const name = names.get(m.personId);
-              if (!name) return null;
-              return m.stock != null ? `${name} ${m.stock} kom` : name;
-            }).filter((n): n is string => Boolean(n));
+            const who = copies
+              .map((m) => {
+                const name = names.get(m.personId);
+                if (!name) return null;
+                return { id: m.personId, label: m.stock != null ? `${name} ${m.stock} kom` : name };
+              })
+              .filter((n): n is { id: string; label: string } => Boolean(n));
             return (
               <li key={med.id}>
                 <button
@@ -78,9 +82,28 @@ export function MedsPanel({
                             .join(" ")}
                     </p>
                     <p className="mt-2 text-xs text-muted">
-                      {who.length
-                        ? `Osobe: ${who.join(" · ")}`
-                        : "Još nije dodan nijednoj osobi."}
+                      {who.length ? (
+                        <span className="flex flex-wrap items-center gap-x-1 gap-y-1">
+                          <span>Osobe:</span>
+                          {who.map((w, i) => (
+                            <span key={w.id + i}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onOpenPerson(w.id);
+                                }}
+                                className="underline-offset-2 hover:underline"
+                              >
+                                {w.label}
+                              </button>
+                              {i < who.length - 1 ? " ·" : ""}
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        "Još nije dodan nijednoj osobi."
+                      )}
                     </p>
                   </div>
                 </button>

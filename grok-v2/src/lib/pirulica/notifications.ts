@@ -69,8 +69,10 @@ export async function showDoseNotification(dose: PlannedDose) {
       url: `/?alarm=${encodeURIComponent(dose.occurrenceId)}`,
     },
     badge: "/icon-192.png",
-    icon: "/icon-192.png",
+    icon: "/icon-512.png",
   };
+
+  await setIconBadge(1);
 
   const sw = typeof navigator !== "undefined" ? navigator.serviceWorker?.controller : null;
   if (sw) {
@@ -120,7 +122,7 @@ export async function showStockNotification(opts: {
     silent: false,
     data: { url: "/?tab=osobe" },
     badge: "/icon-192.png",
-    icon: "/icon-192.png",
+    icon: "/icon-512.png",
   };
   const sw = typeof navigator !== "undefined" ? navigator.serviceWorker?.controller : null;
   if (sw) {
@@ -152,6 +154,34 @@ export async function closeDoseNotification(occurrenceId: string) {
   }
   for (const tag of tags) {
     navigator.serviceWorker?.controller?.postMessage({ type: "close", tag });
+  }
+  await syncIconBadgeFromNotifications();
+}
+
+/** Broj na ikoni (Android/iOS PWA) i u statusnoj traci. */
+export async function setIconBadge(count: number) {
+  const n = Math.max(0, Math.round(count));
+  try {
+    if (n > 0) await navigator.setAppBadge?.(n);
+    else await navigator.clearAppBadge?.();
+  } catch {
+    /* unsupported */
+  }
+  navigator.serviceWorker?.controller?.postMessage({ type: "badge", count: n });
+}
+
+export async function clearIconBadge() {
+  await setIconBadge(0);
+}
+
+async function syncIconBadgeFromNotifications() {
+  try {
+    const reg = await navigator.serviceWorker?.ready;
+    const notes = await reg?.getNotifications();
+    const left = notes?.filter((n) => String(n.tag || "").startsWith("pilurica-")).length ?? 0;
+    await setIconBadge(left);
+  } catch {
+    await setIconBadge(0);
   }
 }
 

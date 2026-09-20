@@ -4,10 +4,10 @@ import { APP_VERSION } from "@/lib/pirulica/version";
 import { CapsuleMark } from "./capsule";
 
 const NEWS = [
-  "Tab Osobe — isti lijek može dobiti više osoba.",
-  "Za svaku osobu upiši koliko komada ima; Uzmi skida samo njoj.",
-  "Obavijest 3 dana prije nego lijek nestane uz redovnu potrošnju.",
-  "Slike s kamere ili iz galerije. Gramažu ne tražim.",
+  "Alarm svira na medijima — i u tihom načinu i kad je ekran ugašen.",
+  "Obavijest na zaključanom zaslonu i broj na ikoni dok ne uzmete.",
+  "Zvoni 2 puta, pa svakih 20 s; odgoda 15 min daje 3, pa 4 zvona.",
+  "Isti lijek uz jednu osobu samo jednom. Gumb Uključi alarm na zaključanom.",
 ];
 
 export function UpdateNotice({ onDismiss }: { onDismiss: () => void }) {

@@ -1,7 +1,8 @@
 import { ackPushOccurrence, subscribeDevice, syncPushAlarms } from "@/lib/push/actions";
 import { VAPID_PUBLIC_KEY } from "@/lib/push/vapid";
+import { unlockAudio } from "./audio";
 import { opaqueFires } from "./schedule";
-import { deviceId, getSnapshot } from "./store";
+import { deviceId, getSnapshot, patchSettings } from "./store";
 import { registerServiceWorker, requestNotificationPermission } from "./notifications";
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
@@ -74,4 +75,18 @@ async function registerPeriodicSync(reg: ServiceWorkerRegistration) {
   } catch {
     /* not installed / not granted */
   }
+}
+
+/** One tap: zvuk, vibracija, obavijesti, push, trajna pohrana — da zvoni na zaključanom. */
+export async function ensureLockAlarms(): Promise<boolean> {
+  patchSettings({ soundEnabled: true, vibrateEnabled: true });
+  await unlockAudio();
+  try {
+    await navigator.storage?.persist?.();
+  } catch {
+    /* ignore */
+  }
+  const ok = await subscribePush();
+  await syncScheduleToServer();
+  return ok;
 }

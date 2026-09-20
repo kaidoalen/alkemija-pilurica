@@ -18,20 +18,24 @@ export function TodayPanel({
   snap,
   meds,
   personName,
+  personId,
   now,
   onTaken,
   onAdd,
   onSimulate,
   onRecover,
+  onOpenPerson,
 }: {
   snap: Snapshot;
   meds: Med[];
   personName: string;
+  personId: string;
   now: number;
   onTaken: (id: string) => void;
   onAdd: () => void;
   onSimulate: () => void;
   onRecover: () => void;
+  onOpenPerson: (id: string) => void;
 }) {
   const plan = todayPlan(meds, now);
   const next = nextUpcoming(meds, snap.logs, snap.snoozes, now);
@@ -46,7 +50,18 @@ export function TodayPanel({
         <section className="rounded-[28px] bg-pine px-5 py-5 text-pine-fg shadow-[var(--shadow-card)]">
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-pine-fg/70">
             Sljedeća doza
-            {personName !== "Ja" ? ` · ${personName}` : ""}
+            {personName ? (
+              <>
+                {" · "}
+                <button
+                  type="button"
+                  onClick={() => onOpenPerson(personId)}
+                  className="underline-offset-2 hover:underline"
+                >
+                  {personName}
+                </button>
+              </>
+            ) : null}
           </p>
           <div className="mt-3 flex items-end justify-between gap-3">
             <div>

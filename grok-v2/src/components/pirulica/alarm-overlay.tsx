@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { BellRing, Clock } from "lucide-react";
 import { formatHm } from "@/lib/pirulica/ids";
+import { startAlarmSound } from "@/lib/pirulica/audio";
 import { remainingLabel, type PlannedDose } from "@/lib/pirulica/schedule";
 import { Button } from "@/components/ui/button";
 import { CapsuleMark } from "./capsule";
@@ -18,14 +20,24 @@ export function AlarmOverlay({
   onMissed: () => void;
 }) {
   const late = now - dose.at > 30_000;
+  const rings = dose.ringCount ?? 2;
+
+  useEffect(() => {
+    void startAlarmSound(rings);
+  }, [dose.occurrenceId, rings]);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-ink text-surface">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(154,74,50,0.28),transparent_55%)]" />
       <div className="relative flex flex-1 flex-col items-center justify-center px-6 text-center">
-        <div className="alarm-pulse mb-8 grid size-24 place-items-center rounded-[28px] bg-clay/20">
+        <button
+          type="button"
+          onClick={() => void startAlarmSound(rings)}
+          className="alarm-pulse mb-8 grid size-24 place-items-center rounded-[28px] bg-clay/20"
+          aria-label="Ponovi zvuk"
+        >
           <BellRing className="size-10 text-clay-fg" strokeWidth={1.6} />
-        </div>
+        </button>
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-faint">
           {dose.occurrenceId.startsWith("test:")
             ? "Proba — nije pravi lijek"
@@ -73,7 +85,9 @@ export function AlarmOverlay({
         </Button>
         <p className="flex items-center justify-center gap-2 pt-1 text-xs text-faint">
           <CapsuleMark size={14} />
-          Alarm svira dok ne uzmete, ne odgodite ili ne ugasite
+          {rings} zvona na glasnoći medija (radi i u tihom načinu). Ponavlja svakih 20 s.
+          Ako ne čujete — stisnite zvono i pojačajte medije. Odgodite 15 min — sljedeći put{" "}
+          {Math.min(8, rings + 1)} zvona.
         </p>
       </div>
     </div>

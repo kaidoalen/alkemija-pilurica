@@ -22,7 +22,7 @@ export async function dispatchDuePushes() {
     from push_alarms a
     join push_devices d on d.device_id = a.device_id
     where a.sent_at is null
-      and a.fire_at <= now() + interval '20 seconds'
+      and a.fire_at <= now() + interval '70 seconds'
     order by a.fire_at asc
     limit 80
   `;
@@ -37,7 +37,7 @@ export async function dispatchDuePushes() {
   );
 
   for (const row of due) {
-    const occurrenceId = row.alarm_id.replace(/:[0-2]$/, "");
+    const occurrenceId = row.alarm_id.replace(/:\d+$/, "");
     const payload = JSON.stringify({
       type: "dose",
       occurrenceId,
@@ -50,7 +50,7 @@ export async function dispatchDuePushes() {
           keys: { p256dh: row.p256dh, auth: row.auth_key },
         },
         payload,
-        { TTL: 180, urgency: "high" },
+        { TTL: 86_400, urgency: "high" },
       );
       sent += 1;
       await sql`
@@ -66,13 +66,8 @@ export async function dispatchDuePushes() {
           : 0;
       if (status === 404 || status === 410) {
         await sql`delete from push_devices where device_id = ${row.device_id}`;
-      } else {
-        await sql`
-          update push_alarms
-          set sent_at = now()
-          where device_id = ${row.device_id} and alarm_id = ${row.alarm_id}
-        `;
       }
+      /* 5xx / timeout: ostavi unsent da sljedeći cron pokuša opet */
     }
   }
 

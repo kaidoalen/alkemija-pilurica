@@ -1,5 +1,6 @@
-STOP. Na mobitelu je krivi program (2.0.11, prazne Osobe).
-Ne crtaj novi UI. Spoji grok-v2/ i objavi https://alkemija.com/app/
+OBJAVI PILURICU 2.4 ODMAH.
+Ne crtaj novi UI. Spoji grok-v2/ i objavi https://alkemija.com/app/ i /pilurica/
 Prvi zaslon = Raspored. Ja već postoji. IndexedDB ne diraj.
-Čitaj STOP-KRIVI-PROGRAM.md
+Alarm: mediji (tihi način + sleep), obavijest na lock screen, badge na ikoni.
+Čitaj grok-v2/CITA-OVO.md i ZNANJE-ZA-CURSOR.md
 Publish now.
