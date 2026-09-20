@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { hr } from "date-fns/locale";
-import { CalendarDays, Pill, Settings } from "lucide-react";
+import { CalendarDays, Pill, Settings, Users } from "lucide-react";
 import {
   resolveDismiss,
   resolveSnooze,
@@ -12,13 +12,15 @@ import {
 import { dueUnacked, nextUpcoming, planWindow } from "@/lib/pirulica/schedule";
 import {
   applyAppUpdate,
+  catalogMeds,
   currentPerson,
   hydrateFromStorage,
   listenForOldPilurica,
   markTaken,
   personMeds,
-  refillMed,
+  removeCatalogMed,
   removeMed,
+  saveCatalogMed,
   seedExamples,
   setCurrentPerson,
   upsertMed,
@@ -37,11 +39,13 @@ import { CapsuleMark } from "./capsule";
 import { MedForm } from "./med-form";
 import { MedsPanel } from "./meds-panel";
 import { OldPullOverlay } from "./old-pull-overlay";
+import { PeoplePanel } from "./people-panel";
 import { SettingsPanel } from "./settings-panel";
 import { TodayPanel } from "./today-panel";
 import { RefreshCard, WhatsNewCard } from "./update-banner";
 
-type Tab = "today" | "meds" | "settings";
+type Tab = "today" | "meds" | "people" | "settings";
+type EditMode = "catalog" | "copy";
 
 function findDose(snap: Snapshot, occurrenceId: string) {
   if (snap.ringing?.occurrenceId === occurrenceId) return snap.ringing;
@@ -62,6 +66,7 @@ export function PiluricaApp() {
   const [now, setNow] = useState(() => Date.now());
   const [tab, setTab] = useState<Tab>("today");
   const [editing, setEditing] = useState<Med | null | undefined>(undefined);
+  const [editMode, setEditMode] = useState<EditMode>("catalog");
   const [whatsNew, setWhatsNew] = useState(false);
   const [staleRefresh, setStaleRefresh] = useState(false);
   const [updating, setUpdating] = useState(false);
@@ -96,6 +101,9 @@ export function PiluricaApp() {
     if (params.get("tab") === "alarms" || params.get("tab") === "settings") {
       setTab("settings");
     }
+    if (params.get("tab") === "osobe" || params.get("tab") === "people") {
+      setTab("people");
+    }
     return () => {
       cancelled = true;
       stopListen();
@@ -111,6 +119,7 @@ export function PiluricaApp() {
   const clock = format(now, "HH:mm");
   const person = currentPerson(snap);
   const mine = personMeds(snap);
+  const catalog = catalogMeds(snap);
 
   function takeById(occurrenceId: string) {
     const dose = findDose(snap, occurrenceId);
@@ -134,6 +143,16 @@ export function PiluricaApp() {
     } finally {
       setUpdating(false);
     }
+  }
+
+  function openCatalog(med: Med | null) {
+    setEditMode("catalog");
+    setEditing(med);
+  }
+
+  function openCopy(med: Med) {
+    setEditMode("copy");
+    setEditing(med);
   }
 
   if (!snap.hydrated) {
@@ -206,7 +225,7 @@ export function PiluricaApp() {
                 personName={person.name}
                 now={now}
                 onTaken={takeById}
-                onAdd={() => setEditing(null)}
+                onAdd={() => openCatalog(null)}
                 onSimulate={() => void testAlarmNow()}
                 onRecover={() => void runRecover()}
               />
@@ -214,24 +233,28 @@ export function PiluricaApp() {
           ) : null}
           {tab === "meds" ? (
             <MedsPanel
-              meds={mine}
-              personName={person.name}
-              onAdd={() => setEditing(null)}
-              onEdit={(m) => setEditing(m)}
-              onRefill={refillMed}
+              meds={catalog}
+              allMeds={snap.meds}
+              people={snap.people}
+              onAdd={() => openCatalog(null)}
+              onEdit={(m) => openCatalog(m)}
             />
+          ) : null}
+          {tab === "people" ? (
+            <PeoplePanel snap={snap} onEditMed={openCopy} />
           ) : null}
           {tab === "settings" ? (
             <SettingsPanel snap={snap} onSeed={seedExamples} onPullOld={() => void runRecover()} />
           ) : null}
         </main>
 
-        <nav className="fixed inset-x-0 bottom-0 mx-auto max-w-lg border-t border-line bg-paper/95 px-3 pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-[2px]">
-          <div className="grid grid-cols-3 gap-1">
+        <nav className="fixed inset-x-0 bottom-0 mx-auto max-w-lg border-t border-line bg-paper/95 px-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-[2px]">
+          <div className="grid grid-cols-4 gap-1">
             {(
               [
                 ["today", "Raspored", CalendarDays],
                 ["meds", "Lijekovi", Pill],
+                ["people", "Osobe", Users],
                 ["settings", "Postavke", Settings],
               ] as const
             ).map(([id, label, Icon]) => {
@@ -260,16 +283,23 @@ export function PiluricaApp() {
           initial={editing}
           people={snap.people}
           personId={person.id}
+          hideOwner={editMode === "catalog"}
           onClose={() => setEditing(undefined)}
           onSave={(med) => {
-            upsertMed(med);
+            if (editMode === "catalog") saveCatalogMed(editing, med);
+            else upsertMed(med);
             setEditing(undefined);
-            setTab("meds");
+            setTab(editMode === "catalog" ? "meds" : "people");
           }}
-          onDelete={(id) => {
-            removeMed(id);
-            setEditing(undefined);
-          }}
+          onDelete={
+            editing
+              ? (id) => {
+                  if (editMode === "catalog" && editing) removeCatalogMed(editing);
+                  else removeMed(id);
+                  setEditing(undefined);
+                }
+              : undefined
+          }
         />
       ) : null}
 

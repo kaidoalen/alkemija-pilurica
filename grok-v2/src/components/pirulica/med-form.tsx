@@ -22,6 +22,7 @@ export function MedForm({
   initial,
   people,
   personId,
+  hideOwner = false,
   onClose,
   onSave,
   onDelete,
@@ -29,6 +30,7 @@ export function MedForm({
   initial: Med | null;
   people: Person[];
   personId: string;
+  hideOwner?: boolean;
   onClose: () => void;
   onSave: (med: Med) => void;
   onDelete?: (id: string) => void;
@@ -217,7 +219,7 @@ export function MedForm({
           </div>
         </div>
 
-        {people.length > 1 ? (
+        {hideOwner || people.length <= 1 ? null : (
           <div className="space-y-2">
             <Label>Osoba</Label>
             <div className="flex flex-wrap gap-2">
@@ -238,7 +240,7 @@ export function MedForm({
               })}
             </div>
           </div>
-        ) : null}
+        )}
 
         <div className="space-y-2">
           <Label>Boja</Label>

@@ -1384,6 +1384,95 @@ export function personMeds(snap: Snapshot = state): Med[] {
   return snap.meds.filter((m) => m.personId === id);
 }
 
+export function medKey(med: Pick<Med, "name" | "dose">): string {
+  return `${med.name.trim().toLowerCase()}|${med.dose.trim().toLowerCase()}`;
+}
+
+export function catalogMeds(snap: Snapshot = state): Med[] {
+  const byKey = new Map<string, Med>();
+  for (const m of snap.meds) {
+    const key = medKey(m);
+    const prev = byKey.get(key);
+    if (!prev) {
+      byKey.set(key, m);
+      continue;
+    }
+    const score = (x: Med) =>
+      (x.photo ? 8 : 0) + (x.packSize != null ? 2 : 0) + (x.times.length ? 1 : 0);
+    if (score(m) > score(prev)) byKey.set(key, m);
+  }
+  return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, "hr"));
+}
+
+export function assignedPeople(snap: Snapshot, med: Med): Person[] {
+  const key = medKey(med);
+  const ids = new Set(
+    snap.meds.filter((m) => medKey(m) === key).map((m) => m.personId),
+  );
+  return snap.people.filter((p) => ids.has(p.id));
+}
+
+export function assignMedToPerson(medId: string, personId: string) {
+  const src = state.meds.find((m) => m.id === medId);
+  if (!src || !state.people.some((p) => p.id === personId)) return;
+  if (state.meds.some((m) => m.personId === personId && medKey(m) === medKey(src))) return;
+  set({
+    meds: [
+      ...state.meds,
+      {
+        ...src,
+        id: nid(),
+        personId,
+        createdAt: Date.now(),
+      },
+    ],
+  });
+}
+
+export function unassignMedFromPerson(medId: string, personId: string) {
+  const med = state.meds.find((m) => m.id === medId && m.personId === personId);
+  if (!med) return;
+  const key = medKey(med);
+  const copies = state.meds.filter((m) => medKey(m) === key);
+  if (copies.length <= 1) return;
+  removeMed(med.id);
+}
+
+export function saveCatalogMed(prev: Med | null, next: Med) {
+  if (!prev) {
+    upsertMed(next);
+    return;
+  }
+  const oldKey = medKey(prev);
+  set({
+    meds: state.meds.map((m) => {
+      if (m.id === next.id) return next;
+      if (medKey(m) !== oldKey) return m;
+      return {
+        ...m,
+        name: next.name,
+        dose: next.dose,
+        form: next.form,
+        color: next.color,
+        photo: next.photo ?? m.photo,
+        packSize: next.packSize,
+        tabletsPerDose: next.tabletsPerDose,
+        notes: next.notes,
+        expiry: next.expiry,
+      };
+    }),
+  });
+}
+
+export function removeCatalogMed(med: Med) {
+  const key = medKey(med);
+  const gone = new Set(state.meds.filter((m) => medKey(m) === key).map((m) => m.id));
+  set({
+    meds: state.meds.filter((m) => !gone.has(m.id)),
+    ringing: state.ringing && gone.has(state.ringing.medId) ? null : state.ringing,
+  });
+}
+
 export function upsertMed(med: Med) {
   const exists = state.meds.some((m) => m.id === med.id);
   set({

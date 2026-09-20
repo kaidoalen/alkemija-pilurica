@@ -13,12 +13,10 @@ import {
 } from "lucide-react";
 import { HowTo } from "@/components/pirulica/how-to";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { unlockAudio } from "@/lib/pirulica/audio";
 import { buildIcs, shareOrDownloadIcs } from "@/lib/pirulica/calendar";
 import { testAlarmIn, testAlarmNow } from "@/lib/pirulica/engine";
-import { nid } from "@/lib/pirulica/ids";
 import {
   getHealth,
   isInstalled,
@@ -26,15 +24,11 @@ import {
 } from "@/lib/pirulica/notifications";
 import {
   applyAppUpdate,
-  currentPerson,
   exportFullPayload,
   importPayload,
   patchSettings,
   personMeds,
-  removePerson,
-  setCurrentPerson,
   type Snapshot,
-  upsertPerson,
 } from "@/lib/pirulica/store";
 import { UPUTE } from "@/lib/pirulica/upute";
 import { APP_VERSION } from "@/lib/pirulica/version";
@@ -79,9 +73,7 @@ export function SettingsPanel({
   const [health, setHealth] = useState<PushHealth | null>(null);
   const [busy, setBusy] = useState(false);
   const [testLabel, setTestLabel] = useState<string | null>(null);
-  const [newPerson, setNewPerson] = useState("");
   const [note, setNote] = useState<string | null>(null);
-  const person = currentPerson(snap);
   const mine = personMeds(snap);
 
   async function refresh() {
@@ -134,15 +126,6 @@ export function SettingsPanel({
     } finally {
       setBusy(false);
     }
-  }
-
-  function addPerson() {
-    const name = newPerson.trim();
-    if (!name) return;
-    const id = nid();
-    upsertPerson({ id, name, createdAt: Date.now() });
-    setCurrentPerson(id);
-    setNewPerson("");
   }
 
   async function downloadJson() {
@@ -203,43 +186,6 @@ export function SettingsPanel({
       </div>
 
       <HowTo />
-
-      <section className="space-y-3">
-        <h3 className="text-sm font-medium text-ink">Osobe</h3>
-        <div className="flex flex-wrap gap-2">
-          {snap.people.map((p) => {
-            const on = p.id === person.id;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => setCurrentPerson(p.id)}
-                className={`h-11 rounded-full px-4 text-sm ${
-                  on ? "bg-ink text-surface" : "bg-surface text-ink shadow-[var(--shadow-card)]"
-                }`}
-              >
-                {p.name}
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex gap-2">
-          <Input
-            value={newPerson}
-            onChange={(e) => setNewPerson(e.target.value)}
-            placeholder="npr. Mama"
-            autoComplete="off"
-          />
-          <Button type="button" variant="outline" onClick={addPerson}>
-            Dodaj
-          </Button>
-        </div>
-        {snap.people.length > 1 ? (
-          <Button variant="danger" className="w-full" onClick={() => removePerson(person.id)}>
-            Ukloni {person.name}
-          </Button>
-        ) : null}
-      </section>
 
       <section className="rounded-[24px] bg-surface px-4 py-2 shadow-[var(--shadow-card)]">
         <StatusRow
