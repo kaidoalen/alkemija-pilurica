@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="hr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Pilurica — preuzimanje stare kopije</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: #eef3ec;
+        color: #14301c;
+        font-family: system-ui, sans-serif;
+      }
+      .card {
+        width: min(22rem, 100%);
+        background: #fff;
+        border-radius: 16px;
+        padding: 22px;
+        box-shadow: 0 8px 24px rgba(20, 48, 28, 0.08);
+      }
+      h1 { margin: 0 0 10px; font-size: 1.25rem; }
+      p { margin: 0 0 12px; line-height: 1.45; }
+      button, a {
+        display: block; width: 100%; text-align: center; text-decoration: none;
+        background: #167a3a; color: #fff; font-weight: 700; padding: 14px 16px;
+        border-radius: 12px; border: 0; cursor: pointer; font: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Stara Pilurica</h1>
+      <p id="msg">Čitam osobe, lijekove, slike, zalihe i satnice…</p>
+      <button type="button" id="go" hidden>Pošalji u novu Piluricu</button>
+    </div>
+    <script>
+      const DB = "lijekovi-podsjetnik";
+      const msg = document.getElementById("msg");
+      const go = document.getElementById("go");
+      let payload = null;
+
+      function blobToDataUrl(blob) {
+        return new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result || ""));
+          r.onerror = () => reject(r.error);
+          r.readAsDataURL(blob);
+        });
+      }
+
+      function getAll(db, store) {
+        return new Promise((resolve) => {
+          try {
+            const tx = db.transaction(store, "readonly");
+            const req = tx.objectStore(store).getAll();
+            req.onsuccess = () => resolve(req.result || []);
+            req.onerror = () => resolve([]);
+          } catch {
+            resolve([]);
+          }
+        });
+      }
+
+      async function dump() {
+        const db = await new Promise((resolve, reject) => {
+          const req = indexedDB.open(DB);
+          req.onupgradeneeded = () => req.transaction.abort();
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+        const names = Array.from(db.objectStoreNames);
+        const patients = names.includes("patients") ? await getAll(db, "patients") : [];
+        const medicines = names.includes("medicines") ? await getAll(db, "medicines") : [];
+        const doseLogs = names.includes("doseLogs") ? await getAll(db, "doseLogs") : [];
+        const rawPhotos = names.includes("photos") ? await getAll(db, "photos") : [];
+        db.close();
+        const photos = [];
+        for (const p of rawPhotos) {
+          let base64 = "";
+          let mimeType = "image/jpeg";
+          if (p && p.blob instanceof Blob) {
+            mimeType = p.blob.type || mimeType;
+            const dataUrl = await blobToDataUrl(p.blob);
+            base64 = String(dataUrl).split(",")[1] || "";
+          } else if (p && typeof p.base64 === "string") {
+            base64 = p.base64.includes(",") ? p.base64.split(",")[1] : p.base64;
+            mimeType = p.mimeType || mimeType;
+          }
+          photos.push({
+            id: p.id,
+            medicineId: p.medicineId,
+            patientId: p.patientId || "",
+            kind: p.kind,
+            slot: p.slot ?? 0,
+            mimeType,
+            base64,
+          });
+        }
+        return {
+          version: 1,
+          app: "pilurica",
+          exportedAt: new Date().toISOString(),
+          patients,
+          medicines,
+          doseLogs,
+          photos,
+        };
+      }
+
+      function send() {
+        if (!payload) return;
+        if (window.opener) {
+          window.opener.postMessage({ type: "pilurica-stara-kopija", payload }, "*");
+          msg.textContent = "Poslano u novu Piluricu. Ovaj tab možete zatvoriti.";
+          return;
+        }
+        const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "pilurica-stara.json";
+        a.click();
+        msg.textContent = "JSON je spremljen. U novoj Pilurici pritisnite Uvezi.";
+      }
+
+      dump()
+        .then((data) => {
+          payload = data;
+          const n = (data.medicines || []).length;
+          const p = (data.photos || []).length;
+          if (!n) {
+            msg.textContent = "Na ovom pregledniku nema stare baze lijekovi-podsjetnik. Otvorite ovu stranicu iz ikone stare Pilurice (alkemija.com/app).";
+            return;
+          }
+          msg.textContent = "Nađeno: " + n + " lijekova, " + p + " slika. Šaljem u novu Piluricu.";
+          go.hidden = false;
+          send();
+        })
+        .catch(() => {
+          msg.textContent = "Nisam uspio pročitati staru bazu. Otvorite alkemija.com/app pa Postavke → Izvezi JSON kopiju.";
+        });
+
+      go.addEventListener("click", send);
+    </script>
+  </body>
+</html>
