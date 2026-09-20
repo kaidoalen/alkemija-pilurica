@@ -1,6 +1,7 @@
 import { BellRing, Plus, Smartphone } from "lucide-react";
 import { formatHm } from "@/lib/pirulica/ids";
 import {
+  canTakeDose,
   isTaken,
   nextUpcoming,
   remainingLabel,
@@ -12,6 +13,7 @@ import { UPUTE } from "@/lib/pirulica/upute";
 import type { Med } from "@/lib/pirulica/types";
 import { Button } from "@/components/ui/button";
 import { HowTo } from "./how-to";
+import { LastTakes } from "./last-takes";
 import { CapsuleMark, colorDot } from "./capsule";
 
 export function TodayPanel({
@@ -25,6 +27,7 @@ export function TodayPanel({
   onSimulate,
   onRecover,
   onOpenPerson,
+  onToggleLastTake,
 }: {
   snap: Snapshot;
   meds: Med[];
@@ -36,10 +39,29 @@ export function TodayPanel({
   onSimulate: () => void;
   onRecover: () => void;
   onOpenPerson: (id: string) => void;
+  onToggleLastTake: (log: {
+    id: string;
+    medId: string;
+    name: string;
+    dose: string;
+    scheduledAt: number;
+  }) => void;
 }) {
   const plan = todayPlan(meds, now);
   const next = nextUpcoming(meds, snap.logs, snap.snoozes, now);
   const remaining = plan.filter((d) => !isTaken(snap.logs, d.occurrenceId));
+  const takenRows = plan
+    .filter((d) => isTaken(snap.logs, d.occurrenceId))
+    .sort((a, b) => {
+      const ta =
+        snap.logs.find((l) => l.id === a.occurrenceId && l.result === "taken")
+          ?.resolvedAt ?? a.at;
+      const tb =
+        snap.logs.find((l) => l.id === b.occurrenceId && l.result === "taken")
+          ?.resolvedAt ?? b.at;
+      return tb - ta || b.at - a.at;
+    });
+  const rows = [...remaining, ...takenRows];
   const alerts = meds.filter(
     (m) => stockWarning(m) !== "none" || expiryWarning(m, now) !== "none",
   );
@@ -74,7 +96,7 @@ export function TodayPanel({
               {remainingLabel(next.at, now)}
             </p>
           </div>
-          {next.at <= now + 15 * 60 * 1000 ? (
+          {canTakeDose(next, now, snap.logs) ? (
             <Button
               variant="outline"
               className="mt-5 w-full bg-pine-fg text-pine"
@@ -82,7 +104,9 @@ export function TodayPanel({
             >
               Uzmi
             </Button>
-          ) : null}
+          ) : (
+            <p className="mt-5 text-sm text-pine-fg/80">Još nije satnica, ili je prošlo manje od 3 sata od prošle tablete.</p>
+          )}
         </section>
       ) : meds.length === 0 ? (
         <section className="rounded-[28px] bg-surface px-5 py-8 text-center shadow-[var(--shadow-card)]">
@@ -126,6 +150,13 @@ export function TodayPanel({
         </section>
       ) : null}
 
+      <LastTakes
+        logs={snap.logs}
+        meds={meds}
+        personName={personName}
+        onToggleLast={onToggleLastTake}
+      />
+
       <section>
         <div className="mb-3 flex items-baseline justify-between">
           <h3 className="text-sm font-medium text-ink">Raspored</h3>
@@ -137,7 +168,7 @@ export function TodayPanel({
           <p className="text-sm text-muted">Nema rasporeda za ovaj dan.</p>
         ) : (
           <ul className="space-y-2">
-            {plan.map((dose) => {
+            {rows.map((dose) => {
               const taken = isTaken(snap.logs, dose.occurrenceId);
               const overdue = !taken && dose.at < now - 60_000;
               return (
@@ -161,7 +192,7 @@ export function TodayPanel({
                     <span className="grid h-11 min-w-11 place-items-center rounded-full bg-pine/10 px-3 text-xs font-medium text-pine">
                       Uzeto
                     </span>
-                  ) : (
+                  ) : canTakeDose(dose, now, snap.logs) ? (
                     <button
                       type="button"
                       onClick={() => onTaken(dose.occurrenceId)}
@@ -169,6 +200,10 @@ export function TodayPanel({
                     >
                       Uzmi
                     </button>
+                  ) : (
+                    <span className="grid h-11 min-w-11 place-items-center px-2 text-xs tabular-nums text-muted">
+                      {remainingLabel(dose.at, now)}
+                    </span>
                   )}
                 </li>
               );
@@ -177,7 +212,7 @@ export function TodayPanel({
         )}
       </section>
 
-      {meds.length === 0 ? (
+      {snap.meds.length === 0 ? (
         <section className="rounded-[24px] bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-faint">
             JSON kopija
@@ -192,22 +227,14 @@ export function TodayPanel({
         </section>
       ) : null}
 
-      <section className="rounded-[24px] bg-clay px-5 py-4 text-clay-fg shadow-[var(--shadow-card)]">
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-clay-fg/70">
-          Proba zvuka
-        </p>
-        <p className="mt-1 text-sm text-clay-fg/85 text-pretty">
-          Morate čuti piskanje. Ako ne — isključite tihi način.
-        </p>
-        <Button
-          variant="outline"
-          className="mt-3 w-full bg-clay-fg text-clay"
-          onClick={onSimulate}
-        >
-          <BellRing className="size-4" />
-          Simuliraj alarm
-        </Button>
-      </section>
+      <button
+        type="button"
+        onClick={onSimulate}
+        className="mx-auto mt-10 mb-1 flex h-11 items-center gap-2 px-3 text-sm text-muted"
+      >
+        <BellRing className="size-4" />
+        Simuliraj alarm
+      </button>
     </div>
   );
 }

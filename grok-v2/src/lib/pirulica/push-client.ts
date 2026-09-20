@@ -43,7 +43,7 @@ export async function subscribePush(): Promise<boolean> {
 
 export async function syncScheduleToServer() {
   const snap = getSnapshot();
-  const fires = opaqueFires(snap.meds, snap.snoozes);
+  const fires = opaqueFires(snap.meds, snap.snoozes, Date.now(), 48 * 60 * 60 * 1000, snap.logs);
   try {
     await syncPushAlarms({
       data: { deviceId: deviceId(), fires },

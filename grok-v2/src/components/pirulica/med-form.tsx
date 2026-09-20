@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Camera, Images, Loader2, X } from "lucide-react";
 import { compressImage, thumbImage } from "@/lib/pirulica/image";
-import { nid } from "@/lib/pirulica/ids";
+import { nid, shiftHour, sortTimes, spacedTimes } from "@/lib/pirulica/ids";
 import { readBoxLabel } from "@/lib/pirulica/scan";
 import {
   MED_COLORS,
@@ -18,12 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { colorDot } from "./capsule";
 
-const TIME_CHIPS = [
-  { hm: "08:00", label: "Ujutro", clock: "8:00" },
-  { hm: "12:00", label: "Podne", clock: "12:00" },
-  { hm: "18:00", label: "Popodne", clock: "18:00" },
-  { hm: "21:00", label: "Navečer", clock: "21:00" },
-];
+const TAKE_COUNTS = [1, 2, 3, 4, 6];
 
 const PER_DOSE = [1, 2, 3];
 
@@ -51,10 +46,11 @@ export function MedForm({
   const [form, setForm] = useState(initial?.form ?? "tablete");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [color, setColor] = useState<MedColor>(initial?.color ?? "pine");
-  const [times, setTimes] = useState<string[]>(initial?.times ?? ["08:00"]);
+  const [times, setTimes] = useState<string[]>(() =>
+    sortTimes(initial?.times?.length ? initial.times : spacedTimes(1)),
+  );
   const [days, setDays] = useState<number[]>(initial?.days ?? [0, 1, 2, 3, 4, 5, 6]);
   const [active, setActive] = useState(initial?.active ?? true);
-  const [customTime, setCustomTime] = useState("");
   const [owner, setOwner] = useState(initial?.personId ?? personId);
   const [stock, setStock] = useState(initial?.stock != null ? String(initial.stock) : "");
   const [packSize, setPackSize] = useState(
@@ -116,21 +112,23 @@ export function MedForm({
     photos,
   ]);
 
-  function toggleTime(hm: string) {
-    setTimes((cur) => (cur.includes(hm) ? cur.filter((t) => t !== hm) : [...cur, hm]));
-  }
-
   function toggleDay(id: number) {
     setDays((cur) => (cur.includes(id) ? cur.filter((d) => d !== id) : [...cur, id]));
   }
 
-  function addCustom() {
-    const raw = customTime.trim();
-    if (!/^\d{1,2}:\d{2}$/.test(raw)) return;
-    const [h, m] = raw.split(":");
-    const hm = `${h.padStart(2, "0")}:${m}`;
-    if (!times.includes(hm)) toggleTime(hm);
-    setCustomTime("");
+  function setTakeCount(n: number) {
+    const start = sortedTimes[0] || "08:00";
+    setTimes(spacedTimes(n, start));
+  }
+
+  function nudgeHour(index: number, delta: number) {
+    setTimes((cur) => {
+      const list = sortTimes(cur);
+      const next = shiftHour(list[index] ?? "08:00", delta);
+      if (list.some((hm, i) => i !== index && hm === next)) return list;
+      list[index] = next;
+      return sortTimes(list);
+    });
   }
 
   async function onPhotos(list: FileList | File[] | null | undefined) {
@@ -361,51 +359,59 @@ export function MedForm({
             3 · Kad da vas podsjetim
           </p>
           <p className="text-sm text-muted text-pretty">
-            Stisnite doba dana kad uzimate lijek. Možete više.
+            Koliko puta na dan? Satnice se rasporede kroz 24 sata. Sat možete pomaknuti.
           </p>
-          <div className="grid grid-cols-2 gap-2">
-            {TIME_CHIPS.map((chip) => {
-              const on = times.includes(chip.hm);
+          <div className="flex gap-2">
+            {TAKE_COUNTS.map((n) => {
+              const on = times.length === n;
               return (
                 <button
-                  key={chip.hm}
+                  key={n}
                   type="button"
-                  onClick={() => toggleTime(chip.hm)}
-                  className={`min-h-14 rounded-[18px] px-3 py-2 text-left ${
+                  onClick={() => setTakeCount(n)}
+                  className={`h-14 min-w-12 flex-1 rounded-[16px] text-lg tabular-nums ${
                     on ? "bg-pine text-pine-fg" : "bg-surface text-ink shadow-[var(--shadow-card)]"
                   }`}
                 >
-                  <span className="block text-sm font-medium">{chip.label}</span>
-                  <span className="block text-xs tabular-nums opacity-80">{chip.clock}</span>
+                  {n}×
                 </button>
               );
             })}
           </div>
-          {times
-            .filter((hm) => !TIME_CHIPS.some((c) => c.hm === hm))
-            .map((hm) => (
-              <button
-                key={hm}
-                type="button"
-                onClick={() => toggleTime(hm)}
-                className="h-12 rounded-full bg-pine px-4 text-sm tabular-nums text-pine-fg"
+          <p className="text-sm text-muted">
+            {times.length <= 1
+              ? "Jednom dnevno."
+              : `Svakih ${Math.round(24 / times.length)} sati.`}
+          </p>
+          <ul className="space-y-2">
+            {sortedTimes.map((hm, i) => (
+              <li
+                key={`${hm}-${i}`}
+                className="flex items-center gap-2 rounded-[20px] bg-surface px-2 py-2 shadow-[var(--shadow-card)]"
               >
-                {hm} · makni
-              </button>
+                <span className="w-8 text-center text-xs text-muted">{i + 1}.</span>
+                <button
+                  type="button"
+                  onClick={() => nudgeHour(i, -1)}
+                  className="grid size-14 place-items-center rounded-[16px] bg-cream text-2xl text-ink"
+                  aria-label="Sat ranije"
+                >
+                  −
+                </button>
+                <span className="flex-1 text-center font-display text-3xl tabular-nums tracking-[-0.04em]">
+                  {hm}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => nudgeHour(i, 1)}
+                  className="grid size-14 place-items-center rounded-[16px] bg-cream text-2xl text-ink"
+                  aria-label="Sat kasnije"
+                >
+                  +
+                </button>
+              </li>
             ))}
-          <div className="flex gap-2">
-            <Input
-              value={customTime}
-              onChange={(e) => setCustomTime(e.target.value)}
-              placeholder="7:30"
-              inputMode="numeric"
-              aria-label="Drugi sat"
-              className="h-12 tabular-nums text-base"
-            />
-            <Button type="button" variant="outline" className="h-12 shrink-0" onClick={addCustom}>
-              Drugi sat
-            </Button>
-          </div>
+          </ul>
           {pickDays ? (
             <div className="space-y-2">
               <p className="text-sm font-medium text-ink">Koje dane?</p>
@@ -555,7 +561,7 @@ export function MedForm({
         <div className="border-t border-line bg-paper px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <Button
             size="lg"
-            className="h-14 w-full text-base"
+            className="h-16 w-full text-lg"
             disabled={!canSave}
             onClick={save}
           >

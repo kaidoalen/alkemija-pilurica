@@ -25,6 +25,36 @@ export function parseHm(hm: string): { hours: number; minutes: number } | null {
   return { hours, minutes };
 }
 
+export function sortTimes(times: string[]): string[] {
+  return [...new Set(times.filter(Boolean))].sort((a, b) => {
+    const pa = parseHm(a);
+    const pb = parseHm(b);
+    if (!pa && !pb) return a.localeCompare(b);
+    if (!pa) return 1;
+    if (!pb) return -1;
+    return pa.hours * 60 + pa.minutes - (pb.hours * 60 + pb.minutes);
+  });
+}
+
+export function spacedTimes(count: number, startHm = "08:00"): string[] {
+  const n = Math.max(1, Math.min(8, Math.round(count) || 1));
+  const start = parseHm(startHm) ?? { hours: 8, minutes: 0 };
+  const origin = start.hours * 60 + start.minutes;
+  const step = Math.round((24 * 60) / n);
+  const out: string[] = [];
+  for (let i = 0; i < n; i += 1) {
+    const m = (origin + i * step) % (24 * 60);
+    out.push(`${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`);
+  }
+  return sortTimes(out);
+}
+
+export function shiftHour(hm: string, deltaHours: number): string {
+  const p = parseHm(hm) ?? { hours: 8, minutes: 0 };
+  const h = (p.hours + deltaHours + 24) % 24;
+  return `${pad2(h)}:${pad2(p.minutes)}`;
+}
+
 export function atOnDay(day: Date, hm: string): number {
   const parsed = parseHm(hm);
   if (!parsed) return day.getTime();

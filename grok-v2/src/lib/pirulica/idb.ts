@@ -1,5 +1,5 @@
 import { IDB_NAME, IDB_STORE } from "./types";
-import { dueUnacked, planWindow, type PlannedDose } from "./schedule";
+import { watchUpcoming, type PlannedDose } from "./schedule";
 import type { Snapshot } from "./store";
 
 export type SwSchedule = {
@@ -24,13 +24,10 @@ function openDb(): Promise<IDBDatabase> {
 
 export async function writeSchedule(snap: Snapshot) {
   if (typeof indexedDB === "undefined") return;
-  const upcoming = [
-    ...dueUnacked(snap.meds, snap.logs, snap.snoozes),
-    ...planWindow(snap.meds, Date.now(), 3).slice(0, 80),
-    ...snap.snoozes,
-  ];
   const unique = new Map<string, PlannedDose>();
-  for (const d of upcoming) unique.set(d.occurrenceId, d);
+  for (const d of watchUpcoming(snap.meds, snap.logs, snap.snoozes)) {
+    unique.set(d.occurrenceId, d);
+  }
   const payload: SwSchedule = {
     upcoming: [...unique.values()],
     ringingId: snap.ringing?.occurrenceId ?? null,

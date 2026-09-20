@@ -9,7 +9,7 @@ import {
   startEngine,
   testAlarmNow,
 } from "@/lib/pirulica/engine";
-import { dueUnacked, nextUpcoming, planWindow } from "@/lib/pirulica/schedule";
+import { dueUnacked, planWindow } from "@/lib/pirulica/schedule";
 import {
   applyAppUpdate,
   catalogMeds,
@@ -17,6 +17,7 @@ import {
   hydrateFromStorage,
   listenForOldPilurica,
   markTaken,
+  unmarkTaken,
   personMeds,
   removeCatalogMed,
   removeMed,
@@ -42,25 +43,39 @@ import { OldPullOverlay } from "./old-pull-overlay";
 import { PeoplePanel } from "./people-panel";
 import { SettingsPanel } from "./settings-panel";
 import { TodayPanel } from "./today-panel";
-import { RefreshCard, UpdateNotice } from "./update-banner";
-import { LockArm, needsLockArm } from "./lock-arm";
-import { ensureLockAlarms } from "@/lib/pirulica/push-client";
+import { RefreshCard } from "./update-banner";
 
 type Tab = "today" | "meds" | "people" | "settings";
 type EditMode = "catalog" | "copy";
 
 function findDose(snap: Snapshot, occurrenceId: string) {
   if (snap.ringing?.occurrenceId === occurrenceId) return snap.ringing;
-  return (
+  const hit =
     dueUnacked(snap.meds, snap.logs, snap.snoozes).find(
       (d) => d.occurrenceId === occurrenceId,
     ) ??
     snap.snoozes.find((d) => d.occurrenceId === occurrenceId) ??
-    planWindow(snap.meds, Date.now() - 86_400_000, 4).find(
+    planWindow(snap.meds, Date.now() - 86_400_000, 8).find(
       (d) => d.occurrenceId === occurrenceId,
-    ) ??
-    nextUpcoming(snap.meds, snap.logs, snap.snoozes)
-  );
+    );
+  if (hit) return hit;
+  const colon = occurrenceId.lastIndexOf(":");
+  if (colon < 0) return null;
+  const medId = occurrenceId.slice(0, colon);
+  const at = Number(occurrenceId.slice(colon + 1));
+  const med = snap.meds.find((m) => m.id === medId);
+  if (!med || !Number.isFinite(at)) return null;
+  return {
+    occurrenceId,
+    medId,
+    personId: med.personId,
+    personName: "",
+    name: med.name,
+    dose: med.dose,
+    color: med.color,
+    tabletsPerDose: med.tabletsPerDose || 1,
+    at,
+  };
 }
 
 export function PiluricaApp() {
@@ -69,13 +84,11 @@ export function PiluricaApp() {
   const [tab, setTab] = useState<Tab>("today");
   const [editing, setEditing] = useState<Med | null | undefined>(undefined);
   const [editMode, setEditMode] = useState<EditMode>("catalog");
-  const [whatsNew, setWhatsNew] = useState(() => needsWhatsNew());
   const [staleRefresh, setStaleRefresh] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [recoverNote, setRecoverNote] = useState<string | null>(null);
   const [pullOpen, setPullOpen] = useState(false);
   const [viewPersonId, setViewPersonId] = useState<string | null>(null);
-  const [lockArm, setLockArm] = useState(() => !needsWhatsNew() && needsLockArm());
 
   useEffect(() => {
     let cancelled = false;
@@ -84,6 +97,7 @@ export function PiluricaApp() {
       if (cancelled) return;
       startEngine();
       setStaleRefresh(needsStaleRefresh());
+      if (needsWhatsNew()) dismissWhatsNew();
     })();
     const stopListen = listenForOldPilurica((r) => {
       if (cancelled) return;
@@ -128,12 +142,35 @@ export function PiluricaApp() {
 
   function takeById(occurrenceId: string) {
     const dose = findDose(snap, occurrenceId);
-    if (!dose) return;
+    if (!dose || dose.occurrenceId !== occurrenceId) return;
     if (snap.ringing?.occurrenceId === occurrenceId) {
       void resolveTaken(dose);
       return;
     }
-    markTaken(dose);
+    markTaken(dose, Date.now(), { ignoreGap: true });
+  }
+
+  function toggleLastTakeLog(log: { id: string; medId: string; name: string; dose: string; scheduledAt: number }) {
+    if (snap.logs.some((l) => l.id === log.id && l.result === "taken")) {
+      unmarkTaken(log.id);
+      return;
+    }
+    const med = snap.meds.find((m) => m.id === log.medId);
+    markTaken(
+      {
+        occurrenceId: log.id,
+        medId: log.medId,
+        personId: med?.personId ?? "",
+        personName: "",
+        name: log.name,
+        dose: log.dose,
+        color: med?.color ?? "pine",
+        tabletsPerDose: med?.tabletsPerDose || 1,
+        at: log.scheduledAt,
+      },
+      Date.now(),
+      { ignoreGap: true },
+    );
   }
 
   async function runRecover() {
@@ -165,30 +202,6 @@ export function PiluricaApp() {
     setViewPersonId(id);
     setEditing(undefined);
     setTab("people");
-  }
-
-  if (whatsNew) {
-    return (
-      <div className="min-h-dvh bg-paper text-ink">
-        <UpdateNotice
-          onDismiss={() => {
-            dismissWhatsNew();
-            setWhatsNew(false);
-            void ensureLockAlarms().then((ok) => {
-              if (!ok && needsLockArm()) setLockArm(true);
-            });
-          }}
-        />
-      </div>
-    );
-  }
-
-  if (lockArm) {
-    return (
-      <div className="min-h-dvh bg-paper text-ink">
-        <LockArm onDone={() => setLockArm(false)} />
-      </div>
-    );
   }
 
   if (!snap.hydrated) {
@@ -259,6 +272,7 @@ export function PiluricaApp() {
                 onSimulate={() => void testAlarmNow()}
                 onRecover={() => void runRecover()}
                 onOpenPerson={openPerson}
+                onToggleLastTake={toggleLastTakeLog}
               />
             </div>
           ) : null}
@@ -278,6 +292,7 @@ export function PiluricaApp() {
               viewId={viewPersonId}
               onViewId={setViewPersonId}
               onEditMed={openCopy}
+              onToggleLastTake={toggleLastTakeLog}
             />
           ) : null}
           {tab === "settings" ? (

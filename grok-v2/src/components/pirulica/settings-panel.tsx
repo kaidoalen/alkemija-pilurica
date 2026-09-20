@@ -302,13 +302,16 @@ export function SettingsPanel({
       <section className="space-y-2">
         <h3 className="text-sm font-medium text-ink">JSON kopija</h3>
         <p className="text-xs text-muted text-pretty">
-          Uvezi JSON — slike kutija, doze, preostala količina i satnice. Nema korisničkog
-          računa.
+          {snap.meds.length
+            ? "Podaci su već u programu. Nova kopija: izvezite ili odaberite datoteku."
+            : "Uvezi JSON — slike kutija, doze, preostala količina i satnice."}
         </p>
-        <Button variant="clay" className="w-full" disabled={busy} onClick={onPullOld}>
-          <Upload className="size-4" />
-          Uvezi JSON kopiju
-        </Button>
+        {snap.meds.length === 0 ? (
+          <Button variant="clay" className="w-full" disabled={busy} onClick={onPullOld}>
+            <Upload className="size-4" />
+            Uvezi JSON kopiju
+          </Button>
+        ) : null}
         <div className="grid grid-cols-2 gap-2">
           <Button variant="outline" onClick={() => void downloadJson()}>
             <Download className="size-4" />

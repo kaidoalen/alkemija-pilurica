@@ -13,9 +13,10 @@ import {
   upsertPerson,
 } from "@/lib/pirulica/store";
 import { daysLeftLabel, formatStock, stockWarning } from "@/lib/pirulica/stock";
-import type { Med } from "@/lib/pirulica/types";
+import type { DoseLog, Med } from "@/lib/pirulica/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LastTakes } from "./last-takes";
 import { PhotoStrip } from "./photo-strip";
 
 export function PeoplePanel({
@@ -23,11 +24,13 @@ export function PeoplePanel({
   viewId,
   onViewId,
   onEditMed,
+  onToggleLastTake,
 }: {
   snap: Snapshot;
   viewId: string | null;
   onViewId: (id: string | null) => void;
   onEditMed: (med: Med) => void;
+  onToggleLastTake: (log: DoseLog) => void;
 }) {
   const [newName, setNewName] = useState("");
   const [picking, setPicking] = useState(false);
@@ -98,6 +101,13 @@ export function PeoplePanel({
             </p>
           </div>
         </div>
+
+        <LastTakes
+          logs={snap.logs}
+          meds={mine}
+          personName={person.name}
+          onToggleLast={onToggleLastTake}
+        />
 
         {mine.length === 0 ? (
           <div className="rounded-[24px] bg-surface px-5 py-8 text-center shadow-[var(--shadow-card)]">

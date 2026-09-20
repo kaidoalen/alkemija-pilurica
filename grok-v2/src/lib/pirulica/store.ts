@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
-import { nid } from "./ids";
-import { nextRingCount, type PlannedDose } from "./schedule";
+import { formatHm, nid, sortTimes, startOfDay } from "./ids";
+import { canTakeDose, nextRingCount, type PlannedDose } from "./schedule";
 import {
   BACKUP_KEY,
   DEFAULT_PERSON,
@@ -51,10 +51,12 @@ function emit() {
 
 function persist() {
   if (typeof localStorage === "undefined") return;
-  const unique = dedupePersonMeds(state.meds);
-  if (unique.length !== state.meds.length) {
-    state = { ...state, meds: unique };
-  }
+  const unique = dropPersonNamedMeds(state.people, dedupePersonMeds(state.meds)).map((m) => ({
+    ...m,
+    times: sortTimes(m.times || []),
+    days: m.days?.length ? m.days : [0, 1, 2, 3, 4, 5, 6],
+  }));
+  state = { ...state, meds: unique };
   const payload = persistable();
   const light = {
     ...payload,
@@ -346,6 +348,7 @@ function parseDays(r: Record<string, unknown>): number[] {
       };
       return map[String(d).trim().toLowerCase()] ?? Number(d);
     })
+    .map((d) => (d === 7 ? 0 : d))
     .filter((d) => d >= 0 && d <= 6);
   return days.length ? days : [0, 1, 2, 3, 4, 5, 6];
 }
@@ -577,6 +580,42 @@ function asPersonNameFromMed(r: Record<string, unknown>): string {
   return nested ? personNameOf(nested) : "";
 }
 
+function medicineNameOf(r: Record<string, unknown>, personName = ""): string {
+  const skip = personName.trim().toLowerCase();
+  const keys = [
+    "medicineName",
+    "medicationName",
+    "lijek",
+    "drug",
+    "medication",
+    "nazivLijeka",
+    "productName",
+    "brandName",
+    "tradeName",
+    "genericName",
+    "naziv",
+    "title",
+    "label",
+    "name",
+  ];
+  for (const k of keys) {
+    const v = firstString(r, [k]);
+    if (!v) continue;
+    const lower = v.trim().toLowerCase();
+    if (skip && lower === skip) continue;
+    if (isJaName(v)) continue;
+    return v.trim();
+  }
+  return "";
+}
+
+function dropPersonNamedMeds(people: Person[], meds: Med[]): Med[] {
+  const names = new Set(
+    people.map((p) => p.name.trim().toLowerCase()).filter(Boolean),
+  );
+  return meds.filter((m) => !names.has(m.name.trim().toLowerCase()));
+}
+
 function asPhoto(r: Record<string, unknown>): string | null {
   const keys = [
     "photo",
@@ -601,7 +640,8 @@ function asPhoto(r: Record<string, unknown>): string | null {
 function asMed(raw: unknown): Med | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
-  const name = firstString(r, ["name", "naziv", "title", "lijek", "drug", "medication"]);
+  const personName = asPersonNameFromMed(r);
+  const name = medicineNameOf(r, personName);
   if (!name) return null;
   const times = parseTimes(r);
   const days = parseDays(r);
@@ -901,7 +941,10 @@ function fromParsed(parsed: Partial<Snapshot> | ExportPayload | Record<string, u
   ]);
   const people = peopleFromBundle(peopleRaw, medsRaw);
   const jaDefined = people.some((p) => isJaName(p.name));
-  const meds = medsRaw.map(asMed).filter((m): m is Med => Boolean(m));
+  const meds = dropPersonNamedMeds(
+    people,
+    medsRaw.map(asMed).filter((m): m is Med => Boolean(m)),
+  );
   const withPhotos = attachOldPhotos(meds, pickArray(rec, ["photos", "slike", "images"]));
   const logsRaw = pickArray(rec, [
     "logs",
@@ -911,7 +954,12 @@ function fromParsed(parsed: Partial<Snapshot> | ExportPayload | Record<string, u
     "taken",
     "doseLogs",
   ]);
-  const logs = logsRaw.map(asLog).filter((l): l is DoseLog => Boolean(l));
+  const keptIds = new Set(withPhotos.map((m) => m.id));
+  const personNames = new Set(people.map((p) => p.name.trim().toLowerCase()).filter(Boolean));
+  const logs = logsRaw
+    .map(asLog)
+    .filter((l): l is DoseLog => Boolean(l))
+    .filter((l) => keptIds.has(l.medId) || !personNames.has(l.name.trim().toLowerCase()));
   const snoozes = (Array.isArray(rec.snoozes) ? rec.snoozes : []) as PlannedDose[];
   const cleaned = dropUndefinedJa(people, withPhotos, asSettings(rec.settings ?? rec), jaDefined);
   return {
@@ -961,7 +1009,7 @@ function richerMed(a: Med, b: Med): Med {
     name: pick.name || other.name,
     dose: pick.dose || other.dose,
     form: pick.form || other.form,
-    times: pick.times.length >= other.times.length ? pick.times : other.times,
+    times: sortTimes([...pick.times, ...other.times]),
     days: pick.days.length >= other.days.length ? pick.days : other.days,
     notes: pick.notes || other.notes,
     stock: pick.stock ?? other.stock,
@@ -1581,9 +1629,15 @@ export function saveCatalogMed(prev: Med | null, next: Med) {
     return;
   }
   const oldKey = medKey(prev);
+  const slotFix =
+    sortTimes(prev.times).join() !== sortTimes(next.times).join()
+      ? dropTakenOnOldTimes(prev.id, next.times)
+      : {};
+  const base = slotFix.meds ?? state.meds;
   set({
-    meds: state.meds.map((m) => {
-      if (m.id === next.id) return next;
+    ...slotFix,
+    meds: base.map((m) => {
+      if (m.id === next.id) return { ...next, times: sortTimes(next.times) };
       if (medKey(m) !== oldKey) return m;
       return {
         ...m,
@@ -1611,23 +1665,64 @@ export function removeCatalogMed(med: Med) {
   });
 }
 
+function dropTakenOnOldTimes(medId: string, keepTimes: string[]): Partial<Snapshot> {
+  const keep = new Set(sortTimes(keepTimes));
+  const day0 = startOfDay().getTime();
+  const day1 = day0 + 86_400_000;
+  const dropped: DoseLog[] = [];
+  const logs = state.logs.filter((l) => {
+    if (l.medId !== medId || l.result !== "taken") return true;
+    if (l.scheduledAt < day0 || l.scheduledAt >= day1) return true;
+    if (keep.has(formatHm(l.scheduledAt))) return true;
+    dropped.push(l);
+    return false;
+  });
+  if (!dropped.length) return {};
+  const med = state.meds.find((m) => m.id === medId);
+  const add = (med?.tabletsPerDose || 1) * dropped.length;
+  const meds =
+    med && med.stock != null
+      ? state.meds.map((m) =>
+          m.id === medId ? { ...m, stock: (m.stock ?? 0) + add } : m,
+        )
+      : state.meds;
+  const gone = new Set(dropped.map((l) => l.id));
+  return {
+    logs,
+    meds,
+    snoozes: state.snoozes.filter((s) => !gone.has(s.occurrenceId)),
+    ringing:
+      state.ringing && gone.has(state.ringing.occurrenceId) ? null : state.ringing,
+  };
+}
+
 export function upsertMed(med: Med) {
-  const key = medKey(med);
+  const next = { ...med, times: sortTimes(med.times) };
+  const key = medKey(next);
   const twin = state.meds.find(
-    (m) => m.personId === med.personId && medKey(m) === key && m.id !== med.id,
+    (m) => m.personId === next.personId && medKey(m) === key && m.id !== next.id,
   );
+  const prev = twin ?? state.meds.find((m) => m.id === next.id);
+  const slotFix =
+    prev && sortTimes(prev.times).join() !== next.times.join()
+      ? dropTakenOnOldTimes(prev.id, next.times)
+      : {};
   if (twin) {
-    const merged = richerMed(twin, { ...med, id: twin.id, personId: twin.personId });
+    const merged = richerMed(twin, { ...next, id: twin.id, personId: twin.personId });
+    const base = slotFix.meds ?? state.meds;
     set({
-      meds: state.meds
-        .filter((m) => m.id !== med.id)
+      ...slotFix,
+      meds: base
+        .filter((m) => m.id !== next.id)
         .map((m) => (m.id === twin.id ? merged : m)),
     });
     return;
   }
-  const exists = state.meds.some((m) => m.id === med.id);
+  const exists = state.meds.some((m) => m.id === next.id);
+  const base = slotFix.meds ?? state.meds;
   set({
-    meds: exists ? state.meds.map((m) => (m.id === med.id ? med : m)) : [...state.meds, med],
+    ...slotFix,
+    meds: exists ? base.map((m) => (m.id === next.id ? next : m)) : [...base, next],
   });
 }
 
@@ -1691,7 +1786,14 @@ export function removePerson(id: string) {
   });
 }
 
-export function markTaken(dose: PlannedDose, now = Date.now()) {
+export function markTaken(dose: PlannedDose, now = Date.now(), opts?: { ignoreGap?: boolean }) {
+  if (
+    !opts?.ignoreGap &&
+    !canTakeDose(dose, now, state.logs) &&
+    state.ringing?.occurrenceId !== dose.occurrenceId
+  ) {
+    return;
+  }
   const med = state.meds.find((m) => m.id === dose.medId);
   const n = dose.tabletsPerDose || med?.tabletsPerDose || 1;
   const log: DoseLog = {
@@ -1705,13 +1807,32 @@ export function markTaken(dose: PlannedDose, now = Date.now()) {
   };
   set({
     logs: [...state.logs.filter((l) => l.id !== log.id), log],
-    snoozes: state.snoozes.filter((s) => s.occurrenceId !== dose.occurrenceId),
+    snoozes: state.snoozes.filter(
+      (s) => s.occurrenceId !== dose.occurrenceId && s.medId !== dose.medId,
+    ),
     ringing: state.ringing?.occurrenceId === dose.occurrenceId ? null : state.ringing,
     meds: med
       ? state.meds.map((m) =>
           m.id === med.id && m.stock != null ? { ...m, stock: Math.max(0, m.stock - n) } : m,
         )
       : state.meds,
+  });
+}
+
+export function unmarkTaken(occurrenceId: string) {
+  const log = state.logs.find((l) => l.id === occurrenceId && l.result === "taken");
+  if (!log) return;
+  const med = state.meds.find((m) => m.id === log.medId);
+  const n = med?.tabletsPerDose || 1;
+  set({
+    logs: state.logs.filter((l) => l.id !== occurrenceId),
+    ringing: state.ringing?.occurrenceId === occurrenceId ? null : state.ringing,
+    meds:
+      med && med.stock != null
+        ? state.meds.map((m) =>
+            m.id === med.id ? { ...m, stock: (m.stock ?? 0) + n } : m,
+          )
+        : state.meds,
   });
 }
 
@@ -1730,6 +1851,7 @@ export function markMissed(dose: PlannedDose, now = Date.now()) {
   };
   set({
     logs: [...state.logs.filter((l) => l.id !== log.id), log],
+    snoozes: state.snoozes.filter((s) => s.occurrenceId !== dose.occurrenceId),
     ringing: state.ringing?.occurrenceId === dose.occurrenceId ? null : state.ringing,
   });
 }
@@ -1738,12 +1860,11 @@ export function snoozeDose(dose: PlannedDose, minutes: number, now = Date.now())
   const at = now + minutes * 60_000;
   const next: PlannedDose = {
     ...dose,
-    occurrenceId: `${dose.medId}:snooze:${at}`,
     at,
     ringCount: nextRingCount(dose),
   };
   const log: DoseLog = {
-    id: `${dose.occurrenceId}:snooze`,
+    id: `${dose.occurrenceId}:snooze:${now}`,
     medId: dose.medId,
     name: dose.name,
     dose: dose.dose,

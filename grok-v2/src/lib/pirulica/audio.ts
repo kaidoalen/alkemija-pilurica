@@ -65,23 +65,35 @@ function makeAudio(url: string): HTMLAudioElement {
 function alarmWavUrl(): string {
   if (alarmUrl) return alarmUrl;
   const sampleRate = 22050;
-  const seconds = 1.6;
+  const seconds = 2.6;
   const n = Math.floor(sampleRate * seconds);
   const data = new Int16Array(n);
-  const bursts: Array<[number, number, number]> = [
-    [0, 0.22, 880],
-    [0.28, 0.5, 698],
-    [0.56, 0.78, 880],
-    [0.92, 1.3, 523],
+  const notes: Array<[number, number, number]> = [
+    [523.25, 0.0, 0.48],
+    [659.25, 0.34, 0.48],
+    [783.99, 0.68, 0.56],
+    [987.77, 1.12, 0.42],
+    [1046.5, 1.48, 0.7],
+    [783.99, 2.12, 0.42],
   ];
   for (let i = 0; i < n; i++) {
     const t = i / sampleRate;
-    const burst = bursts.find(([a, b]) => t >= a && t < b);
-    if (!burst) continue;
-    const f = burst[2];
-    const square = Math.sin(2 * Math.PI * f * t) >= 0 ? 1 : -1;
-    const low = Math.sin(2 * Math.PI * (f / 2) * t);
-    data[i] = Math.max(-32767, Math.min(32767, (square * 0.78 + low * 0.4) * 32000));
+    let s = 0;
+    for (const [f, start, dur] of notes) {
+      if (t < start || t > start + dur) continue;
+      const u = (t - start) / dur;
+      const env = Math.sin(Math.PI * Math.min(1, u * 1.08)) * Math.exp(-2.4 * u);
+      const vib = 1 + 0.004 * Math.sin(2 * Math.PI * 5.2 * t);
+      const w = 2 * Math.PI * f * vib * (t - start);
+      s +=
+        env *
+        (Math.sin(w) * 0.72 +
+          Math.sin(2 * w) * 0.22 +
+          Math.sin(3 * w) * 0.08 +
+          Math.sin(6 * w) * 0.04);
+    }
+    s += Math.sin(2 * Math.PI * 130.81 * t) * 0.04 * Math.sin((Math.PI * t) / seconds);
+    data[i] = Math.max(-32767, Math.min(32767, s * 28000));
   }
   alarmUrl = URL.createObjectURL(pcmToWav(data, sampleRate));
   return alarmUrl;
@@ -116,7 +128,7 @@ function ensureKeepAudio(): HTMLAudioElement | null {
   if (typeof Audio === "undefined") return null;
   if (!keepAudio) {
     keepAudio = makeAudio(keepAliveWavUrl());
-    keepAudio.volume = 0.18;
+    keepAudio.volume = 0.02;
   }
   return keepAudio;
 }
@@ -173,7 +185,7 @@ async function playKeepAlive(): Promise<boolean> {
   if (!a) return false;
   a.muted = false;
   a.loop = true;
-  a.volume = 0.18;
+  a.volume = 0.02;
   try {
     await a.play();
     primed = true;
@@ -217,39 +229,42 @@ export function stopAlarmSound() {
 
 function scheduleBeeps(c: AudioContext, rings: number) {
   const master = c.createGain();
-  master.gain.value = 0.85;
+  master.gain.value = 0.7;
   master.connect(c.destination);
   nodes.push(master);
 
-  const beep = (freq: number, when: number, dur: number) => {
+  const chime = (freq: number, when: number, dur: number) => {
     const osc = c.createOscillator();
-    const sub = c.createOscillator();
+    const sparkle = c.createOscillator();
     const g = c.createGain();
-    osc.type = "square";
-    sub.type = "sawtooth";
+    osc.type = "sine";
+    sparkle.type = "sine";
     osc.frequency.value = freq;
-    sub.frequency.value = freq / 2;
+    sparkle.frequency.value = freq * 2;
     g.gain.setValueAtTime(0.0001, when);
-    g.gain.exponentialRampToValueAtTime(1, when + 0.018);
-    g.gain.setValueAtTime(1, when + dur - 0.04);
+    g.gain.exponentialRampToValueAtTime(0.9, when + 0.03);
     g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
     osc.connect(g);
-    sub.connect(g);
+    sparkle.connect(g);
     g.connect(master);
     osc.start(when);
-    sub.start(when);
+    sparkle.start(when);
     osc.stop(when + dur + 0.02);
-    sub.stop(when + dur + 0.02);
-    nodes.push(osc, sub, g);
+    sparkle.stop(when + dur + 0.02);
+    nodes.push(osc, sparkle, g);
   };
 
+  const phrase = [
+    [523.25, 0.0, 0.42],
+    [659.25, 0.34, 0.42],
+    [783.99, 0.68, 0.5],
+    [987.77, 1.12, 0.38],
+    [1046.5, 1.48, 0.62],
+  ] as const;
   const t0 = c.currentTime + 0.02;
   for (let r = 0; r < rings; r++) {
-    const t = t0 + r * 1.6;
-    beep(880, t, 0.22);
-    beep(698.46, t + 0.28, 0.22);
-    beep(880, t + 0.56, 0.22);
-    beep(523.25, t + 0.92, 0.38);
+    const t = t0 + r * 2.4;
+    for (const [f, off, dur] of phrase) chime(f, t + off, dur);
   }
 }
 
@@ -302,7 +317,7 @@ export async function startAlarmSound(rings = 2) {
   loopId = window.setTimeout(() => {
     if (!playing) return;
     stopAlarmSound();
-  }, total * 1600);
+  }, total * 2400);
 }
 
 export function vibrateAlarm() {

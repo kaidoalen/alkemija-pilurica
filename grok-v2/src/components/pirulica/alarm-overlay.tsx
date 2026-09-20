@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { BellRing, Clock } from "lucide-react";
 import { formatHm } from "@/lib/pirulica/ids";
 import { startAlarmSound } from "@/lib/pirulica/audio";
@@ -21,10 +20,6 @@ export function AlarmOverlay({
 }) {
   const late = now - dose.at > 30_000;
   const rings = dose.ringCount ?? 2;
-
-  useEffect(() => {
-    void startAlarmSound(rings);
-  }, [dose.occurrenceId, rings]);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-ink text-surface">
@@ -85,9 +80,7 @@ export function AlarmOverlay({
         </Button>
         <p className="flex items-center justify-center gap-2 pt-1 text-xs text-faint">
           <CapsuleMark size={14} />
-          {rings} zvona na glasnoći medija (radi i u tihom načinu). Ponavlja svakih 20 s.
-          Ako ne čujete — stisnite zvono i pojačajte medije. Odgodite 15 min — sljedeći put{" "}
-          {Math.min(8, rings + 1)} zvona.
+          {rings} zvona u pozadini. Ovdje je dovoljno Uzmi ili odgoda. Zvono samo ako želite opet čuti.
         </p>
       </div>
     </div>

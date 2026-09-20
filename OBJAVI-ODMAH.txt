@@ -1,6 +1,7 @@
-OBJAVI PILURICU 2.4 ODMAH.
+OBJAVI PILURICU 2.5 ODMAH.
 Ne crtaj novi UI. Spoji grok-v2/ i objavi https://alkemija.com/app/ i /pilurica/
 Prvi zaslon = Raspored. Ja već postoji. IndexedDB ne diraj.
-Alarm: mediji (tihi način + sleep), obavijest na lock screen, badge na ikoni.
+Satnica → Uzmi → Uzeto. Odklik = Uzmi sada. Promjena sata skida staro Uzeto.
+Alen je osoba, ne lijek.
 Čitaj grok-v2/CITA-OVO.md i ZNANJE-ZA-CURSOR.md
 Publish now.

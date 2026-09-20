@@ -1,4 +1,4 @@
-/* Pilurica alarm SW v2.4 — wake, notify, retry until the dose is handled. */
+/* Pilurica alarm SW v2.5 — only at scheduled or snoozed time, never early. */
 const DB_NAME = "pirulica";
 const DB_STORE = "kv";
 
@@ -66,6 +66,11 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isDue(d, now = Date.now()) {
+  if (!d || !d.at) return false;
+  return d.at <= now && d.at >= now - 2 * 60 * 60 * 1000;
+}
+
 async function onPush(event) {
   let occurrenceId = "";
   try {
@@ -80,25 +85,17 @@ async function onPush(event) {
   const upcoming = schedule?.upcoming || [];
   const now = Date.now();
   const match =
-    upcoming.find((d) => d.occurrenceId === occurrenceId) ||
-    upcoming.find((d) => d.at <= now + 30_000 && d.at >= now - 2 * 60 * 60 * 1000);
+    upcoming.find((d) => d.occurrenceId === occurrenceId && isDue(d, now)) ||
+    upcoming.find((d) => isDue(d, now));
 
-  if (match) {
-    await showAlarm({
-      title: "Vrijeme za piluricu",
-      body: match.dose ? `${match.name} · ${match.dose}` : match.name,
-      occurrenceId: match.occurrenceId,
-    });
-    await pingClients(match.occurrenceId);
-    return;
-  }
+  if (!match) return;
 
   await showAlarm({
     title: "Vrijeme za piluricu",
-    body: "Otvori aplikaciju i potvrdi dozu.",
-    occurrenceId: occurrenceId || `tick:${now}`,
+    body: match.dose ? `${match.name} · ${match.dose}` : match.name,
+    occurrenceId: match.occurrenceId,
   });
-  await pingClients(occurrenceId);
+  await pingClients(match.occurrenceId);
 }
 
 async function onSchedule(payload) {
@@ -115,12 +112,12 @@ async function scanDue() {
 
 async function scanDueFrom(upcoming, ringingId) {
   const now = Date.now();
-  const due = (upcoming || []).filter(
-    (d) => d.at <= now + 20_000 && d.at >= now - 2 * 60 * 60 * 1000,
-  );
-  if (ringingId && !due.some((d) => d.occurrenceId === ringingId)) {
+  const due = (upcoming || []).filter((d) => isDue(d, now));
+  if (ringingId) {
     const ringing = (upcoming || []).find((d) => d.occurrenceId === ringingId);
-    if (ringing) due.push(ringing);
+    if (ringing && isDue(ringing, now) && !due.some((d) => d.occurrenceId === ringingId)) {
+      due.push(ringing);
+    }
   }
   for (const dose of due) {
     await showAlarm({
