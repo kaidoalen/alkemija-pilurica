@@ -8,8 +8,10 @@ import {
 } from "@/lib/pirulica/schedule";
 import { expiryWarning, stockWarning } from "@/lib/pirulica/stock";
 import type { Snapshot } from "@/lib/pirulica/store";
+import { UPUTE } from "@/lib/pirulica/upute";
 import type { Med } from "@/lib/pirulica/types";
 import { Button } from "@/components/ui/button";
+import { HowTo } from "./how-to";
 import { CapsuleMark, colorDot } from "./capsule";
 
 export function TodayPanel({
@@ -75,12 +77,9 @@ export function TodayPanel({
           <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-cream">
             <CapsuleMark size={28} />
           </div>
-          <h2 className="mt-4 font-display text-2xl tracking-[-0.03em]">
-            Zaboravljate tablete?
-          </h2>
+          <h2 className="mt-4 font-display text-2xl tracking-[-0.03em]">Pilurica</h2>
           <p className="mx-auto mt-2 max-w-[32ch] text-sm text-muted text-pretty">
-            Pilurica je podsjetnik za odrasle — za sebe i još nekoga. Naziv dolazi od
-            pilola i urica.
+            {UPUTE.lead}
           </p>
           <Button className="mt-5" onClick={onAdd}>
             <Plus className="size-4" />
@@ -94,13 +93,14 @@ export function TodayPanel({
         </section>
       )}
 
+      {meds.length === 0 ? <HowTo compact /> : null}
+
       <section className="rounded-[24px] bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
         <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-faint">
-          Zapisi na telefonu
+          Stara kopija
         </p>
         <p className="mt-1 text-sm text-muted text-pretty">
-          Iz stare Pilurice pokupi slike kutija, zalihe, satnice i ponavljanja. Tamo Izvezi JSON,
-          ovdje odaberi tu datoteku.
+          Slike, zalihe i satnice iz stare Pilurice.
         </p>
         <Button variant="outline" className="mt-3 w-full" onClick={onRecover}>
           <Smartphone className="size-4" />
@@ -113,7 +113,7 @@ export function TodayPanel({
           Proba zvuka
         </p>
         <p className="mt-1 text-sm text-clay-fg/85 text-pretty">
-          Pritisni i ostavi telefon odblokiran. Moraš čuti piskanje i osjetiti vibraciju.
+          Moraš čuti piskanje. Ako ne — isključi tihi način.
         </p>
         <Button
           variant="outline"

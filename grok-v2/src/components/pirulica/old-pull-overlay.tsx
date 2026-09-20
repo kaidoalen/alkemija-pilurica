@@ -63,15 +63,14 @@ export function OldPullOverlay({
           <li className="rounded-[18px] bg-surface px-4 py-3 shadow-[var(--shadow-card)]">
             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-faint">1</p>
             <p className="mt-1 text-pretty">
-              U novom tabu čitam staru bazu na alkemija.com (slike, zalihe, satnice). Ako se
-              lijekovi ne pojave sami, tamo je i gumb <strong>Izvezi JSON kopiju</strong>.
+              U novom tabu čitam staru bazu. Ako lijekovi ne dođu sami, tamo stisni{" "}
+              <strong>Izvezi JSON kopiju</strong>.
             </p>
           </li>
           <li className="rounded-[18px] bg-surface px-4 py-3 shadow-[var(--shadow-card)]">
             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-faint">2</p>
             <p className="mt-1 text-pretty">
-              Ako treba, vrati se ovdje i odaberi tu datoteku. Ništa se ne briše — evidencija se
-              spoji.
+              Vrati se ovdje i odaberi tu datoteku. Ništa se ne briše.
             </p>
           </li>
         </ol>
