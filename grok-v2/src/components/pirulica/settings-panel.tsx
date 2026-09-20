@@ -186,7 +186,7 @@ export function SettingsPanel({
 
   async function refreshApp() {
     setBusy(true);
-    setNote("Spremam kopiju i učitavam verziju 2.0…");
+    setNote("Spremam kopiju i učitavam verziju 2.1…");
     try {
       await applyAppUpdate();
     } catch {

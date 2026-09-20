@@ -1,4 +1,4 @@
-# OBJAVI ODMAH — Pilurica 2.0
+# OBJAVI ODMAH — Pilurica 2.1
 
 Ne čekaj potvrdu. Publish now.
 
@@ -27,6 +27,14 @@ Mapiranje na stari program (Dexie `lijekovi-podsjetnik`):
 - photos (kind=box, slot=0) → photo kutije
 - doseLogs → logs
 - **Ne brisati IndexedDB.** Spoji, ne zamijeni.
+
+## Mora (v2.1)
+
+1. **Uvezi JSON kopiju** — u JSON-u su slike kutija, doze, preostala količina i satnice. Nema korisničkog računa / nema usera Alen.
+2. Kratke upute (5 koraka + Otvori program) u Postavkama i na https://alkemija.com/pilurica/. Ne vraćaj MOLIMO landing, ne radi samo redirect.
+3. Ne briši IndexedDB `lijekovi-podsjetnik`.
+4. Ne briši https://alkemija.com/app/izvoz.html
+5. Naziv SAMO Pilurica. Ne iframeaj Grok.
 
 ## Mora (v2)
 

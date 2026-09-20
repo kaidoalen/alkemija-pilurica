@@ -106,4 +106,4 @@ export const DEVICE_KEY = "pilurica-device-id";
 export const LEGACY_DEVICE_KEY = "pirulica-device-id";
 export const IDB_NAME = "pirulica";
 export const IDB_STORE = "kv";
-export const SW_PATH = "/sw.js";
+export const SW_PATH = "./sw.js";
