@@ -4,7 +4,7 @@ import type { PlannedDose } from "./schedule";
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return null;
   try {
-    return await navigator.serviceWorker.register(SW_PATH, { scope: "/" });
+    return await navigator.serviceWorker.register(SW_PATH, { scope: "./" });
   } catch {
     return null;
   }
