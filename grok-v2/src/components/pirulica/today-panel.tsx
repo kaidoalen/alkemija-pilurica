@@ -97,14 +97,14 @@ export function TodayPanel({
 
       <section className="rounded-[24px] bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
         <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-faint">
-          Stara kopija
+          JSON kopija
         </p>
         <p className="mt-1 text-sm text-muted text-pretty">
-          Slike, zalihe i satnice iz stare Pilurice.
+          Uvezi JSON — slike, doze, preostala količina i satnice.
         </p>
         <Button variant="outline" className="mt-3 w-full" onClick={onRecover}>
           <Smartphone className="size-4" />
-          Preuzmi iz stare Pilurice
+          Uvezi JSON kopiju
         </Button>
       </section>
 

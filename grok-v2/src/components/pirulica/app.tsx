@@ -16,9 +16,7 @@ import {
   hydrateFromStorage,
   listenForOldPilurica,
   markTaken,
-  openOldPiluricaExport,
   personMeds,
-  recoverFromDevice,
   refillMed,
   removeMed,
   seedExamples,
@@ -88,7 +86,7 @@ export function PiluricaApp() {
       setPullOpen(false);
       setRecoverNote(
         r.meds
-          ? `Preuzeto iz stare Pilurice: ${r.meds} lijekova · ${r.photos} slika · zalihe za ${r.withStock} · satnice za ${r.withTimes}.`
+          ? `Uvezen JSON: ${r.meds} lijekova · ${r.photos} slika · zaliha za ${r.withStock} · satnice za ${r.withTimes}.`
           : "Stara kopija je stigla, ali u njoj nema lijekova.",
       );
       if (r.meds) setTab("meds");
@@ -125,17 +123,7 @@ export function PiluricaApp() {
   }
 
   async function runRecover() {
-    const local = await recoverFromDevice();
-    if (local.meds) {
-      setRecoverNote(
-        `Pokupljeno ovdje: ${local.meds} lijekova · ${local.photos} slika · zalihe za ${local.withStock}. Otvaram staru Piluricu da preuzmem i tamošnje zapise.`,
-      );
-    } else {
-      setRecoverNote(
-        "Otvaram staru Piluricu. Tamo Izvezi JSON kopiju, pa se vrati ovdje i odaberi tu datoteku.",
-      );
-    }
-    openOldPiluricaExport();
+    setRecoverNote(null);
     setPullOpen(true);
   }
 
@@ -290,7 +278,7 @@ export function PiluricaApp() {
           onDone={(r) => {
             setPullOpen(false);
             setRecoverNote(
-              `Preuzeto iz stare Pilurice: ${r.meds} lijekova · ${r.photos} slika · zalihe za ${r.withStock} · satnice za ${r.withTimes}.`,
+              `Uvezen JSON: ${r.meds} lijekova · ${r.photos} slika · zaliha za ${r.withStock} · satnice za ${r.withTimes}.`,
             );
             setTab("meds");
           }}

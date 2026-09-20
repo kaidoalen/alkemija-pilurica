@@ -8,7 +8,6 @@ import {
   Lock,
   RefreshCw,
   ShieldAlert,
-  Smartphone,
   Upload,
   Volume2,
 } from "lucide-react";
@@ -28,7 +27,7 @@ import {
 import {
   applyAppUpdate,
   currentPerson,
-  exportPayload,
+  exportFullPayload,
   importPayload,
   patchSettings,
   personMeds,
@@ -146,8 +145,8 @@ export function SettingsPanel({
     setNewPerson("");
   }
 
-  function downloadJson() {
-    const blob = new Blob([JSON.stringify(exportPayload(), null, 2)], {
+  async function downloadJson() {
+    const blob = new Blob([JSON.stringify(await exportFullPayload(), null, 2)], {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);
@@ -156,7 +155,7 @@ export function SettingsPanel({
     a.download = `pilurica-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 4_000);
-    setNote("JSON kopija je spremljena.");
+    setNote("JSON kopija je spremljena — slike, doze, zaliha i satnice.");
   }
 
   async function onImport(file: File | undefined) {
@@ -167,7 +166,7 @@ export function SettingsPanel({
       const result = await importPayload(parsed);
       setNote(
         result.ok
-          ? "Kopija je uvezena — lijekovi i slike kutija."
+          ? "Uvezen JSON: slike, doze, preostala količina i satnice."
           : result.error,
       );
     } catch {
@@ -348,19 +347,23 @@ export function SettingsPanel({
       </section>
 
       <section className="space-y-2">
-        <h3 className="text-sm font-medium text-ink">Kopija</h3>
+        <h3 className="text-sm font-medium text-ink">JSON kopija</h3>
+        <p className="text-xs text-muted text-pretty">
+          Uvezi JSON — slike kutija, doze, preostala količina i satnice. Nema korisničkog
+          računa.
+        </p>
         <Button variant="clay" className="w-full" disabled={busy} onClick={onPullOld}>
-          <Smartphone className="size-4" />
-          Preuzmi iz stare Pilurice
+          <Upload className="size-4" />
+          Uvezi JSON kopiju
         </Button>
         <div className="grid grid-cols-2 gap-2">
-          <Button variant="outline" onClick={downloadJson}>
+          <Button variant="outline" onClick={() => void downloadJson()}>
             <Download className="size-4" />
             Izvezi JSON
           </Button>
           <Button variant="outline" onClick={() => fileRef.current?.click()}>
             <Upload className="size-4" />
-            Uvezi
+            Odaberi datoteku
           </Button>
         </div>
         <input

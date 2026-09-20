@@ -1382,6 +1382,49 @@ export function exportPayload(): ExportPayload {
   };
 }
 
+export async function exportFullPayload(): Promise<Record<string, unknown>> {
+  const snap = await attachPhotos(state);
+  const photos = snap.meds
+    .filter((m) => isDisplayablePhoto(m.photo))
+    .map((m) => {
+      const photo = m.photo as string;
+      const mime = /^data:(image\/[a-zA-Z0-9.+-]+)/.exec(photo)?.[1] ?? "image/jpeg";
+      const base64 = photo.includes(",") ? photo.slice(photo.indexOf(",") + 1) : photo;
+      return {
+        medicineId: m.id,
+        kind: "box",
+        slot: 0,
+        mimeType: mime,
+        base64,
+      };
+    });
+  return {
+    app: "pilurica",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    people: snap.people,
+    patients: snap.people,
+    meds: snap.meds,
+    medicines: snap.meds.map((m) => ({
+      id: m.id,
+      patientId: m.personId,
+      name: m.name,
+      tabletsInBox: m.packSize ?? 0,
+      remainingTablets: m.stock ?? 0,
+      tabletsPerDose: m.tabletsPerDose,
+      timesPerDay: Math.max(1, m.times.length),
+      clockTimes: m.times,
+      notes: m.notes,
+      expiresOn: m.expiry ?? "",
+      createdAt: m.createdAt,
+    })),
+    photos,
+    logs: snap.logs.slice(-400),
+    doseLogs: snap.logs.slice(-400),
+    settings: snap.settings,
+  };
+}
+
 export async function importPayload(raw: unknown): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!raw || typeof raw !== "object") return { ok: false, error: "Datoteka nije prepoznata." };
   const incoming = fromParsed(raw as Record<string, unknown>);

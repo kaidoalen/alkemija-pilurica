@@ -7,7 +7,7 @@ export const UPUTE = {
     "Po želji dodaj na početni zaslon.",
     "Fotografiraj prednju stranu kutije, unesi broj tableta i satnice.",
     "Kad zazvoni, stisni Uzmi. Alarm svira dok ne uzmeš ili odgodiš 15 ili 30 minuta.",
-    "Ne briši podatke stranice. Prije novog telefona izvezi JSON u Postavkama.",
+    "Prije novog telefona uvezi JSON kopiju — u njoj su slike, doze, zaliha i satnice.",
   ],
   install: "Android: ⋮ → Instaliraj. iPhone: Dijeli → Dodaj na početni zaslon.",
   alarm:

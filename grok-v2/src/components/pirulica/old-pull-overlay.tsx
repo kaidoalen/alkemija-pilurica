@@ -1,10 +1,6 @@
 import { useRef, useState } from "react";
-import { Smartphone, Upload, X } from "lucide-react";
-import {
-  ingestOldFile,
-  openOldPiluricaExport,
-  type RecoverReport,
-} from "@/lib/pirulica/store";
+import { Upload, X } from "lucide-react";
+import { ingestOldFile, type RecoverReport } from "@/lib/pirulica/store";
 import { Button } from "@/components/ui/button";
 import { CapsuleMark } from "./capsule";
 
@@ -26,18 +22,12 @@ export function OldPullOverlay({
     try {
       const report = await ingestOldFile(file);
       if (!report.meds) {
-        setError("U toj kopiji nema lijekova. Izvezite JSON iz Postavki stare Pilurice.");
-        return;
-      }
-      if (!report.photos) {
-        setError(
-          "Lijekovi su stigli, slike nisu. U staroj Pilurici stisni Izvezi JSON kopiju, pa ovdje odaberi tu datoteku.",
-        );
+        setError("U toj datoteci nema lijekova. Treba JSON kopija iz Postavki.");
         return;
       }
       onDone(report, "file");
     } catch {
-      setError("Datoteka nije valjani JSON iz stare Pilurice.");
+      setError("Datoteka nije valjani JSON.");
     } finally {
       setBusy(false);
     }
@@ -60,30 +50,19 @@ export function OldPullOverlay({
           </span>
           <div>
             <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-faint">
-              Stara Pilurica
+              JSON kopija
             </p>
-            <h2 className="font-display text-2xl tracking-[-0.03em]">Preuzmi kopiju</h2>
+            <h2 className="font-display text-2xl tracking-[-0.03em]">Uvezi JSON</h2>
           </div>
         </div>
-        <ol className="mt-5 space-y-3 text-sm text-ink">
-          <li className="rounded-[18px] bg-surface px-4 py-3 shadow-[var(--shadow-card)]">
-            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-faint">1</p>
-            <p className="mt-1 text-pretty">
-              U novom tabu čitam staru bazu sa slikama kutija. Ako ne dođu same, tamo stisni{" "}
-              <strong>Pošalji</strong> ili <strong>Izvezi JSON kopiju</strong>.
-            </p>
-          </li>
-          <li className="rounded-[18px] bg-surface px-4 py-3 shadow-[var(--shadow-card)]">
-            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-faint">2</p>
-            <p className="mt-1 text-pretty">
-              Vrati se ovdje i odaberi tu datoteku. Ništa se ne briše.
-            </p>
-          </li>
-        </ol>
+        <p className="mt-4 text-sm text-muted text-pretty">
+          U JSON-u su slike kutija, doze, preostala količina i satnice. Nema prijave ni
+          korisničkog računa — odaberi datoteku.
+        </p>
         {error ? (
           <p className="mt-4 rounded-[16px] bg-clay/12 px-4 py-3 text-sm text-clay">{error}</p>
         ) : null}
-        <div className="mt-5 space-y-2">
+        <div className="mt-5">
           <Button
             className="w-full"
             disabled={busy}
@@ -91,14 +70,6 @@ export function OldPullOverlay({
           >
             <Upload className="size-4" />
             {busy ? "Uvozim…" : "Odaberi JSON kopiju"}
-          </Button>
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={() => openOldPiluricaExport()}
-          >
-            <Smartphone className="size-4" />
-            Otvori staru Piluricu ponovo
           </Button>
         </div>
         <input
