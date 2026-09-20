@@ -18,6 +18,7 @@ import {
   type Settings,
 } from "./types";
 import { ensureRefreshStamp, markRefreshed, refreshRuntime } from "./version";
+import { UPUTE } from "./upute";
 
 export type Snapshot = {
   people: Person[];
@@ -1422,6 +1423,14 @@ export async function exportFullPayload(): Promise<Record<string, unknown>> {
     logs: snap.logs.slice(-400),
     doseLogs: snap.logs.slice(-400),
     settings: snap.settings,
+    upute: {
+      title: UPUTE.title,
+      lead: UPUTE.lead,
+      steps: [...UPUTE.steps],
+      install: UPUTE.install,
+      alarm: UPUTE.alarm,
+      disclaimer: UPUTE.disclaimer,
+    },
   };
 }
 

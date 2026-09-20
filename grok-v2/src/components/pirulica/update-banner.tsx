@@ -10,7 +10,7 @@ export function WhatsNewCard({ onDismiss }: { onDismiss: () => void }) {
       </p>
       <h2 className="mt-2 font-display text-2xl tracking-[-0.03em]">Nova verzija</h2>
       <p className="mt-2 text-sm text-pine-fg/80 text-pretty">
-        Uvezi JSON kopiju — slike, doze, zaliha i satnice. Zapisi ostaju.
+        Alarm, slika kutije, zaliha, više osoba. Zapisi ostaju.
       </p>
       <Button
         variant="outline"
