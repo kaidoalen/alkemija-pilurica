@@ -1,10 +1,11 @@
-OBJAVI ODMAH https://alkemija.com/pilurica/
+OBJAVI ODMAH https://alkemija.com/app/
 Ne čekaj potvrdu. Publish now.
 
 Pilurica JE U CURSORU.
 Hub: https://cursor.com/codebase/alen-duka/tmp-73f26e436c5fb419
 
-Kopiraj app/izvoz.html kao PRAVU datoteku na alkemija.com/app/izvoz.html
-(ne SPA fallback). Dodaj wp-izvoz-snippet.html na stranicu 1420.
-Ne iframeaj Grok. Ne briši IndexedDB. Naziv SAMO Pilurica.
+Sav Grok v2 je u folderu grok-v2/ — preuzmi i spoji.
+Ne iframeaj Grok. Ne crtaj novi program. Naziv SAMO Pilurica.
+IndexedDB ne diraj. izvoz.html na /app/izvoz.html NE BRISATI.
+Landing /pilurica/ već otvara program — ne vraćaj „MOLIMO OTVORITI“.
 Publish now.

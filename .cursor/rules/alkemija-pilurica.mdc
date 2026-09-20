@@ -1,8 +1,8 @@
 ---
-description: alkemija.com/pilurica živi iframe Pilurice 2.0
+description: Pilurica na alkemija.com — objavi odmah, ne brisi podatke
 alwaysApply: true
 ---
 
-OBJAVI ODMAH. https://alkemija.com/pilurica/ mora iframeati živu Grok Piluricu.
-Obriši landing „MOLIMO OTVORITI NA MOBITELU“. Ne reimplementiraj program u WordPressu.
-Zalijepi wordpress-pilurica.html. Naziv SAMO Pilurica. Publish now.
+Naziv SAMO Pilurica. Ne iframeaj Grok. Ne brisi IndexedDB.
+izvoz.html na /app/izvoz.html je UZIVO — ne brisati.
+Ugradi grok-v2/ u Hub i objavi na https://alkemija.com/app/

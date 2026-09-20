@@ -1,31 +1,18 @@
-<!-- WP: https://alkemija.com/pilurica/ — zamijeni sav postojeći sadržaj ovim. -->
+<!-- WP stranica 1420 https://alkemija.com/pilurica/ — VEĆ UŽIVO. Ne vraćaj landing. -->
 <style>
-.entry-title,
-.page-header,
-.entry-header,
-header.page-header { display: none !important; }
-.site-main,
-.entry-content,
-.page-content {
-  max-width: none !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  background: #f3eee4;
-}
-#pilurica-app {
-  width: 100%;
-  min-height: 100vh;
-  height: 100dvh;
-  border: 0;
-  display: block;
-  background: #f3eee4;
-}
+.entry-title, .page-header, .entry-header, header.page-header { display: none !important; }
+.site-main, .entry-content, .page-content { max-width: none !important; margin: 0 !important; padding: 0 !important; background: #eef3ec; }
+.ak-go { font-family: system-ui, sans-serif; padding: 28px 5vw; color: #14301c; }
+.ak-go a { display: inline-flex; min-height: 52px; align-items: center; justify-content: center; padding: 14px 18px; border-radius: 12px; background: #167a3a; color: #fff !important; font-weight: 700; text-decoration: none; }
 </style>
-<iframe
-  id="pilurica-app"
-  src="REPLACE_WITH_PILURICA_ORIGIN/"
-  title="Pilurica"
-  loading="eager"
-  allow="notifications; clipboard-write; clipboard-read"
-  referrerpolicy="strict-origin-when-cross-origin"
-></iframe>
+<meta http-equiv="refresh" content="0;url=https://alkemija.com/app/" />
+<div class="ak-go">
+  <p>Pilurica se otvara…</p>
+  <p><a href="https://alkemija.com/app/">Otvori program</a></p>
+</div>
+<script>
+(function () {
+  if (location.search.indexOf("izvoz=1") !== -1) return;
+  location.replace("https://alkemija.com/app/");
+})();
+</script>

@@ -1,14 +1,12 @@
 NAZIV ZADATKA: alkemija pilurica 2.0
-OBJAVI ODMAH na https://alkemija.com/pilurica/
+OBJAVI ODMAH na https://alkemija.com/app/
 
-Ovo je ažuriranje starog Cursor programa. Alarmi se više ne smiju preskakati na Androidu.
+Ovo je ažuriranje starog Cursor programa. Uzmi folder grok-v2/ i spoji.
 
-1. Obriši landing tekst „MOLIMO OTVORITI NA MOBITELU“.
-2. Zalijepi sadržaj iz wordpress-pilurica.html (Custom HTML).
-3. REPLACE_WITH_PILURICA_ORIGIN = javna HTTPS adresa Grok Pilurice nakon Objavi, bez crte na kraju.
-4. Sakrij WP naslov stranice.
-5. Iframe min-height 100dvh, bez okvira.
-6. Naziv SAMO Pilurica.
-7. Ne crtaj novi UI u WordPressu. Ne preslikavaj alarme.
+1. Alarmi se više ne smiju preskakati na Androidu (engine.ts + audio.ts + sw.js).
+2. Preuzmi iz stare Pilurice: izvoz.html + store.ts ingestOldExport.
+3. Ne brisati IndexedDB. Ne brisati izvoz.html.
+4. Landing /pilurica/ već otvara program — ne vraćati „MOLIMO OTVORITI“.
+5. Naziv SAMO Pilurica. Ne iframeaj Grok. Ne crtaj novi UI u WordPressu.
 
-Ako posjetitelj na alkemija.com/pilurica/ vidi landing umjesto programa — iframe nije spojen. Popravi src. Publish now.
+Publish now u wp-content/plugins/pilurica/app/
