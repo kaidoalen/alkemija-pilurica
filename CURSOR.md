@@ -1,28 +1,21 @@
-# Cursor — Pilurica. OBJAVI ODMAH.
+# Cursor — Pilurica. OBJAVI ODMAH, ali NE BRISI izvoz.html.
 
-**Ne čekaj potvrdu. Publish now.**
+Izvor: Cursor Hub https://cursor.com/codebase/alen-duka/tmp-73f26e436c5fb419
+Stranica programa: **https://alkemija.com/app/**
+Landing https://alkemija.com/pilurica/ sada otvara program (MOLIMO OTVORITI je skinut).
 
-Izvor: [Cursor Hub](https://cursor.com/codebase/alen-duka/tmp-73f26e436c5fb419)
-Agent: https://cursor.com/agents/bc-5df97b1b-c46e-4b45-80ea-c7e1bee59d88
-Stranica: **https://alkemija.com/pilurica/**
-Stari program: **https://alkemija.com/app/**
+## Već uživo (ne dirati)
 
-Grok nije zamjena. Ne iframeaj Grok. Naziv SAMO **Pilurica**.
-IndexedDB **ne brisati**.
+- `https://alkemija.com/app/izvoz.html` — pravi dump IndexedDB `lijekovi-podsjetnik` (slike, zalihe, satnice). Plugin `pilurica` ga servira. **Ne zamjenjuj ga sa SPA index.html. Ne briši datoteku.**
+- `pilurica.php`: `izvoz.html` ide u no-cache kao `index.html`.
+- IndexedDB se ne briše.
 
-## Danas mora
+## Mora (v2 u Cursor Hub, pa u /app/)
 
 1. Alarm zvoni dok se ne pritisne Uzmi / 15 min / 30 min / Ugasi.
 2. Trostruko: setTimeout + service worker + web-push. SW ne cachea HTML.
-3. Fotka kutije, zaliha, više osoba, JSON, ICS, PWA.
+3. Fotka kutije predloži naziv i dozu. Zaliha pada na Uzmi.
+4. Više osoba. Ažuriraj JSON. Kalendar ICS. PWA.
+5. Naziv SAMO Pilurica. Ne iframeaj Grok.
 
-## Stara baza — kopiraj ODMAH
-
-Stari Dexie je `lijekovi-podsjetnik` na originu alkemija.com.
-`/app/izvoz.html` trenutno pada na SPA index.html — treba **prava datoteka**.
-
-1. Datoteku `app/izvoz.html` iz ovog repoa stavi kao **stvarni file** na `https://alkemija.com/app/izvoz.html` (prije rewritea na index.html).
-2. Na WP stranicu 1420 (`/pilurica/`) **dodaj** (ne zamijeni) Custom HTML iz `wp-izvoz-snippet.html`.
-3. Ne diraj postojeće osobe i lijekove.
-
-Publish now. Screenshot desktop + mobitel.
+Publish now u /app/. izvoz.html ostaje.
