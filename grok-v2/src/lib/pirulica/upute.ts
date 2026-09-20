@@ -1,13 +1,12 @@
 /** Iste kratke upute u programu, na alkemija.com/pilurica i u JSON kopiji. */
 export const UPUTE = {
   title: "Kako koristiti",
-  lead: "Podsjetnik za tablete — za sebe i još nekoga.",
+  lead: "Upišite lijek, kako ga uzimate i kad da vas podsjeti.",
   steps: [
-    "Otvori na telefonu. Radi i u pregledniku.",
-    "Po želji dodaj na početni zaslon.",
-    "Fotografiraj prednju stranu kutije, unesi broj tableta i satnice.",
-    "Kad zazvoni, stisni Uzmi. Alarm svira dok ne uzmeš ili odgodiš 15 ili 30 minuta.",
-    "Ne briši podatke stranice. Prije novog telefona izvezi JSON.",
+    "Upišite naziv lijeka ili slikajte kutiju.",
+    "Odaberite kako uzimate i kad da vas podsjeti — npr. ujutro u 8.",
+    "Kad zazvoni, stisnite Uzmi. Alarm svira dok ne uzmete ili odgodite 15 ili 30 minuta.",
+    "Ne brišite podatke stranice. Prije novog telefona izvezite JSON.",
   ],
   install: "Android: ⋮ → Instaliraj. iPhone: Dijeli → Dodaj na početni zaslon.",
   alarm:

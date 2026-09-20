@@ -24,7 +24,7 @@ export function MedsPanel({
         <div>
           <h2 className="font-display text-2xl tracking-[-0.03em]">Lijekovi</h2>
           <p className="text-sm text-muted text-pretty">
-            Ovdje definiraš lijek. U tabu Osobe ga dodaješ osobi.
+            Upišite lijek. U Osobama ga dodajete još nekome.
           </p>
         </div>
         <Button size="sm" onClick={onAdd}>
@@ -36,7 +36,7 @@ export function MedsPanel({
       {meds.length === 0 ? (
         <div className="rounded-[24px] bg-surface px-5 py-8 text-center shadow-[var(--shadow-card)]">
           <p className="text-sm text-muted text-pretty">
-            Unesite broj komada, koliko u jednoj dozi i satnice. Isti lijek može uzimati više osoba.
+            Upišite lijek, kako ga uzimate i kad da vas podsjeti.
           </p>
         </div>
       ) : (

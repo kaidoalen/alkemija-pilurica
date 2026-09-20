@@ -78,7 +78,7 @@ export function TodayPanel({
           <p className="mx-auto mt-2 max-w-[32ch] text-sm text-muted text-pretty">
             {UPUTE.lead}
           </p>
-          <Button className="mt-5" onClick={onAdd}>
+          <Button className="mt-5 h-14 w-full text-base" onClick={onAdd}>
             <Plus className="size-4" />
             Dodaj lijek
           </Button>
@@ -91,36 +91,6 @@ export function TodayPanel({
       )}
 
       {meds.length === 0 ? <HowTo compact /> : null}
-
-      <section className="rounded-[24px] bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-faint">
-          JSON kopija
-        </p>
-        <p className="mt-1 text-sm text-muted text-pretty">
-          Uvezi JSON — slike, doze, preostala količina i satnice.
-        </p>
-        <Button variant="outline" className="mt-3 w-full" onClick={onRecover}>
-          <Smartphone className="size-4" />
-          Uvezi JSON kopiju
-        </Button>
-      </section>
-
-      <section className="rounded-[24px] bg-clay px-5 py-4 text-clay-fg shadow-[var(--shadow-card)]">
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-clay-fg/70">
-          Proba zvuka
-        </p>
-        <p className="mt-1 text-sm text-clay-fg/85 text-pretty">
-          Moraš čuti piskanje. Ako ne — isključi tihi način.
-        </p>
-        <Button
-          variant="outline"
-          className="mt-3 w-full bg-clay-fg text-clay"
-          onClick={onSimulate}
-        >
-          <BellRing className="size-4" />
-          Simuliraj alarm
-        </Button>
-      </section>
 
       {alerts.length > 0 ? (
         <section className="rounded-[20px] bg-clay/10 px-4 py-3 text-sm text-clay">
@@ -190,6 +160,38 @@ export function TodayPanel({
             })}
           </ul>
         )}
+      </section>
+
+      {meds.length === 0 ? (
+        <section className="rounded-[24px] bg-surface px-5 py-4 shadow-[var(--shadow-card)]">
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-faint">
+            JSON kopija
+          </p>
+          <p className="mt-1 text-sm text-muted text-pretty">
+            Ako već imate kopiju sa starog telefona — uvezi slike, količinu i satnice.
+          </p>
+          <Button variant="outline" className="mt-3 w-full" onClick={onRecover}>
+            <Smartphone className="size-4" />
+            Uvezi JSON kopiju
+          </Button>
+        </section>
+      ) : null}
+
+      <section className="rounded-[24px] bg-clay px-5 py-4 text-clay-fg shadow-[var(--shadow-card)]">
+        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-clay-fg/70">
+          Proba zvuka
+        </p>
+        <p className="mt-1 text-sm text-clay-fg/85 text-pretty">
+          Morate čuti piskanje. Ako ne — isključite tihi način.
+        </p>
+        <Button
+          variant="outline"
+          className="mt-3 w-full bg-clay-fg text-clay"
+          onClick={onSimulate}
+        >
+          <BellRing className="size-4" />
+          Simuliraj alarm
+        </Button>
       </section>
     </div>
   );

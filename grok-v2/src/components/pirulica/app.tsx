@@ -294,7 +294,7 @@ export function PiluricaApp() {
             if (editMode === "catalog") saveCatalogMed(editing, med);
             else upsertMed(med);
             setEditing(undefined);
-            setTab(editMode === "catalog" ? "meds" : "people");
+            setTab(editMode === "copy" ? "people" : "today");
           }}
           onDelete={
             editing

@@ -29,29 +29,24 @@
         display: block; width: 100%; text-align: center; text-decoration: none;
         background: #167a3a; color: #fff; font-weight: 700; padding: 14px 16px;
         border-radius: 12px; border: 0; cursor: pointer; font: inherit;
+        margin-top: 8px;
       }
+      button[hidden], a[hidden] { display: none; }
     </style>
   </head>
   <body>
     <div class="card">
       <h1>Stara Pilurica</h1>
-      <p id="msg">Čitam osobe, lijekove, slike, zalihe i satnice…</p>
+      <p id="msg">Čitam osobe, lijekove, slike kutija, zalihe i satnice…</p>
       <button type="button" id="go" hidden>Pošalji u novu Piluricu</button>
+      <button type="button" id="dl" hidden>Spremi JSON sa slikama</button>
     </div>
     <script>
       const DB = "lijekovi-podsjetnik";
       const msg = document.getElementById("msg");
       const go = document.getElementById("go");
+      const dl = document.getElementById("dl");
       let payload = null;
-
-      function blobToDataUrl(blob) {
-        return new Promise((resolve, reject) => {
-          const r = new FileReader();
-          r.onload = () => resolve(String(r.result || ""));
-          r.onerror = () => reject(r.error);
-          r.readAsDataURL(blob);
-        });
-      }
 
       function getAll(db, store) {
         return new Promise((resolve) => {
@@ -64,6 +59,60 @@
             resolve([]);
           }
         });
+      }
+
+      function toBytes(value) {
+        if (!value) return null;
+        if (value instanceof ArrayBuffer) return new Uint8Array(value);
+        if (value instanceof Uint8Array) return value;
+        if (value.buffer instanceof ArrayBuffer) return new Uint8Array(value.buffer);
+        return null;
+      }
+
+      function bytesToDataUrl(bytes, mime) {
+        const chunk = 0x8000;
+        let binary = "";
+        for (let i = 0; i < bytes.length; i += chunk) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+        }
+        return "data:" + (mime || "image/jpeg") + ";base64," + btoa(binary);
+      }
+
+      function blobToDataUrl(blob) {
+        return new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result || ""));
+          r.onerror = () => reject(r.error);
+          r.readAsDataURL(blob);
+        });
+      }
+
+      async function rawToDataUrl(raw, mime) {
+        if (typeof Blob !== "undefined" && raw instanceof Blob) {
+          mime = raw.type || mime;
+          try {
+            if (typeof createImageBitmap === "function") {
+              const bmp = await createImageBitmap(raw);
+              const max = 720;
+              const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+              const c = document.createElement("canvas");
+              c.width = Math.max(1, Math.round(bmp.width * scale));
+              c.height = Math.max(1, Math.round(bmp.height * scale));
+              const ctx = c.getContext("2d");
+              ctx.drawImage(bmp, 0, 0, c.width, c.height);
+              bmp.close();
+              return c.toDataURL("image/jpeg", 0.72);
+            }
+          } catch (_) {}
+          return blobToDataUrl(raw);
+        }
+        const bytes = toBytes(raw);
+        if (bytes && bytes.length) return bytesToDataUrl(bytes, mime);
+        if (typeof raw === "string" && raw.startsWith("data:image/")) return raw;
+        if (typeof raw === "string" && raw.length > 24) {
+          return "data:" + (mime || "image/jpeg") + ";base64," + raw.replace(/^data:[^,]*,/, "");
+        }
+        return "";
       }
 
       async function dump() {
@@ -81,23 +130,17 @@
         db.close();
         const photos = [];
         for (const p of rawPhotos) {
-          let base64 = "";
-          let mimeType = "image/jpeg";
-          if (p && p.blob instanceof Blob) {
-            mimeType = p.blob.type || mimeType;
-            const dataUrl = await blobToDataUrl(p.blob);
-            base64 = String(dataUrl).split(",")[1] || "";
-          } else if (p && typeof p.base64 === "string") {
-            base64 = p.base64.includes(",") ? p.base64.split(",")[1] : p.base64;
-            mimeType = p.mimeType || mimeType;
-          }
+          const mime = (p && (p.mimeType || (p.blob && p.blob.type))) || "image/jpeg";
+          const dataUrl = await rawToDataUrl(p && (p.blob || p.data || p.base64), mime);
+          const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+          if (!base64) continue;
           photos.push({
             id: p.id,
             medicineId: p.medicineId,
             patientId: p.patientId || "",
-            kind: p.kind,
+            kind: p.kind || "box",
             slot: p.slot ?? 0,
-            mimeType,
+            mimeType: "image/jpeg",
             base64,
           });
         }
@@ -112,19 +155,50 @@
         };
       }
 
-      function send() {
+      function download() {
         if (!payload) return;
-        if (window.opener) {
-          window.opener.postMessage({ type: "pilurica-stara-kopija", payload }, "*");
-          msg.textContent = "Poslano u novu Piluricu. Ovaj tab možete zatvoriti.";
-          return;
-        }
         const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
         a.download = "pilurica-stara.json";
         a.click();
-        msg.textContent = "JSON je spremljen. U novoj Pilurici pritisnite Uvezi.";
+        msg.textContent = "JSON sa slikama je spremljen. U novoj Pilurici odaberi tu datoteku.";
+      }
+
+      function post(obj) {
+        if (!window.opener) return false;
+        window.opener.postMessage(obj, "*");
+        return true;
+      }
+
+      function send() {
+        if (!payload) return;
+        const photos = payload.photos || [];
+        const slim = Object.assign({}, payload, { photos: [] });
+        let opened = false;
+        try {
+          opened = post({ type: "pilurica-stara-kopija", payload: slim });
+        } catch (_) {
+          opened = false;
+        }
+        if (opened) {
+          for (let i = 0; i < photos.length; i += 1) {
+            try {
+              post({ type: "pilurica-stara-slika", photo: photos[i] });
+            } catch (_) {}
+          }
+          try {
+            post({ type: "pilurica-stara-gotovo", count: photos.length });
+          } catch (_) {}
+          msg.textContent =
+            "Poslano u novu Piluricu: " +
+            (payload.medicines || []).length +
+            " lijekova, " +
+            photos.length +
+            " slika. Ovaj tab možete zatvoriti.";
+          return;
+        }
+        download();
       }
 
       dump()
@@ -132,19 +206,23 @@
           payload = data;
           const n = (data.medicines || []).length;
           const p = (data.photos || []).length;
+          go.hidden = false;
+          dl.hidden = false;
           if (!n) {
-            msg.textContent = "Na ovom pregledniku nema stare baze lijekovi-podsjetnik. Otvorite ovu stranicu iz ikone stare Pilurice (alkemija.com/app).";
+            msg.textContent =
+              "Na ovom pregledniku nema stare baze. Otvori ovu stranicu iz ikone stare Pilurice (alkemija.com/app).";
             return;
           }
-          msg.textContent = "Nađeno: " + n + " lijekova, " + p + " slika. Šaljem u novu Piluricu.";
-          go.hidden = false;
+          msg.textContent = "Nađeno: " + n + " lijekova, " + p + " slika kutija. Šaljem u novu Piluricu.";
           send();
         })
         .catch(() => {
-          msg.textContent = "Nisam uspio pročitati staru bazu. Otvorite alkemija.com/app pa Postavke → Izvezi JSON kopiju.";
+          msg.textContent =
+            "Nisam uspio pročitati staru bazu. Otvori alkemija.com/app pa Postavke → Izvezi JSON kopiju.";
         });
 
       go.addEventListener("click", send);
+      dl.addEventListener("click", download);
     </script>
   </body>
 </html>
