@@ -8,10 +8,12 @@ import {
   photosOf,
   removePerson,
   setCurrentPerson,
+  setPersonStock,
   type Snapshot,
   unassignMedFromPerson,
   upsertPerson,
 } from "@/lib/pirulica/store";
+import { daysLeftLabel, stockWarning } from "@/lib/pirulica/stock";
 import type { Med } from "@/lib/pirulica/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +28,9 @@ export function PeoplePanel({
 }) {
   const [newName, setNewName] = useState("");
   const [openFor, setOpenFor] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ personId: string; med: Med } | null>(null);
+  const [qty, setQty] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const catalog = catalogMeds(snap);
 
   function addPerson() {
@@ -37,12 +42,38 @@ export function PeoplePanel({
     setNewName("");
   }
 
+  function parseQty(raw: string): number | null {
+    const t = raw.trim();
+    if (!t) return null;
+    const n = Number(t.replace(",", "."));
+    if (!Number.isFinite(n)) return null;
+    return Math.max(0, Math.round(n));
+  }
+
+  function confirmAssign() {
+    if (!pending) return;
+    assignMedToPerson(pending.med.id, pending.personId, parseQty(qty));
+    setPending(null);
+    setQty("");
+    setOpenFor(null);
+  }
+
+  function saveDraft(med: Med) {
+    if (!(med.id in drafts)) return;
+    setPersonStock(med.id, parseQty(drafts[med.id] ?? ""));
+    setDrafts((cur) => {
+      const next = { ...cur };
+      delete next[med.id];
+      return next;
+    });
+  }
+
   return (
     <div className="space-y-4">
       <div>
         <h2 className="font-display text-2xl tracking-[-0.03em]">Osobe</h2>
         <p className="text-sm text-muted text-pretty">
-          Dodaj osobu, pa joj odaberi lijekove iz taba Lijekovi.
+          Isti lijek može dobiti više osoba. Za svaku upiši koliko komada ima.
         </p>
       </div>
 
@@ -69,6 +100,7 @@ export function PeoplePanel({
           const available = catalog.filter((m) => !mineKeys.has(medKey(m)));
           const picking = openFor === person.id;
           const on = person.id === snap.settings.currentPersonId;
+          const asking = pending?.personId === person.id;
           return (
             <li
               key={person.id}
@@ -107,35 +139,59 @@ export function PeoplePanel({
 
               {mine.length ? (
                 <ul className="mt-3 space-y-1.5">
-                  {mine.map((med) => (
-                    <li key={med.id}>
-                      <div className="flex items-center gap-2 rounded-[14px] bg-cream px-2 py-1.5">
-                        <button
-                          type="button"
-                          onClick={() => onEditMed(med)}
-                          className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                        >
-                          <PhotoStrip photos={photosOf(med)} color={med.color} size="sm" />
-                          <span className="min-w-0">
-                            <span className="block truncate text-sm text-ink">{med.name}</span>
-                            <span className="block truncate text-xs text-muted">
-                              {med.dose || med.times.join(" · ")}
-                            </span>
-                          </span>
-                        </button>
-                        {snap.meds.filter((m) => medKey(m) === medKey(med)).length > 1 ? (
+                  {mine.map((med) => {
+                    const warn = stockWarning(med);
+                    const left = daysLeftLabel(med);
+                    return (
+                      <li key={med.id}>
+                        <div className="flex items-center gap-2 rounded-[14px] bg-cream px-2 py-1.5">
                           <button
                             type="button"
-                            onClick={() => unassignMedFromPerson(med.id, person.id)}
-                            className="grid size-9 shrink-0 place-items-center rounded-full text-muted"
-                            aria-label={`Makni ${med.name}`}
+                            onClick={() => onEditMed(med)}
+                            className="flex min-w-0 flex-1 items-center gap-2 text-left"
                           >
-                            <X className="size-3.5" />
+                            <PhotoStrip photos={photosOf(med)} color={med.color} size="sm" />
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm text-ink">{med.name}</span>
+                              <span className="block truncate text-xs text-muted">
+                                {warn === "low" && left
+                                  ? left
+                                  : warn === "out"
+                                    ? "nema zalihe"
+                                    : med.times.join(" · ") || med.form}
+                              </span>
+                            </span>
                           </button>
-                        ) : null}
-                      </div>
-                    </li>
-                  ))}
+                          <Input
+                            value={drafts[med.id] ?? (med.stock == null ? "" : String(med.stock))}
+                            onChange={(e) =>
+                              setDrafts((cur) => ({ ...cur, [med.id]: e.target.value }))
+                            }
+                            onBlur={() => saveDraft(med)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.currentTarget.blur();
+                              }
+                            }}
+                            inputMode="numeric"
+                            placeholder="kom"
+                            aria-label={`Komada za ${person.name}`}
+                            className="h-9 w-16 shrink-0 px-2 text-center tabular-nums"
+                          />
+                          {snap.meds.filter((m) => medKey(m) === medKey(med)).length > 1 ? (
+                            <button
+                              type="button"
+                              onClick={() => unassignMedFromPerson(med.id, person.id)}
+                              className="grid size-9 shrink-0 place-items-center rounded-full text-muted"
+                              aria-label={`Makni ${med.name}`}
+                            >
+                              <X className="size-3.5" />
+                            </button>
+                          ) : null}
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : null}
 
@@ -148,14 +204,39 @@ export function PeoplePanel({
                   type="button"
                   variant="outline"
                   className="mt-3 w-full"
-                  onClick={() => setOpenFor(picking ? null : person.id)}
+                  onClick={() => {
+                    setPending(null);
+                    setOpenFor(picking ? null : person.id);
+                  }}
                 >
                   <Plus className="size-4" />
                   {picking ? "Zatvori popis" : "Dodaj lijek"}
                 </Button>
               )}
 
-              {picking ? (
+              {asking ? (
+                <div className="mt-3 space-y-2 rounded-[16px] bg-cream px-3 py-3">
+                  <p className="text-sm text-ink text-pretty">
+                    Koliko komada {pending.med.name} ima {person.name}?
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      value={qty}
+                      onChange={(e) => setQty(e.target.value)}
+                      inputMode="numeric"
+                      placeholder="npr. 20"
+                      className="tabular-nums"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") confirmAssign();
+                      }}
+                    />
+                    <Button type="button" onClick={confirmAssign}>
+                      Spremi
+                    </Button>
+                  </div>
+                </div>
+              ) : picking ? (
                 available.length ? (
                   <ul className="mt-2 space-y-1">
                     {available.map((med) => (
@@ -163,8 +244,8 @@ export function PeoplePanel({
                         <button
                           type="button"
                           onClick={() => {
-                            assignMedToPerson(med.id, person.id);
-                            setOpenFor(null);
+                            setQty("");
+                            setPending({ personId: person.id, med });
                           }}
                           className="flex w-full items-center gap-2 rounded-[14px] px-2 py-2 text-left"
                         >
@@ -172,7 +253,7 @@ export function PeoplePanel({
                           <span className="min-w-0">
                             <span className="block truncate text-sm text-ink">{med.name}</span>
                             <span className="block truncate text-xs text-muted">
-                              {med.dose || "bez doze"}
+                              {med.form || "lijek"}
                             </span>
                           </span>
                         </button>

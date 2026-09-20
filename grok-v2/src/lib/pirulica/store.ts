@@ -1497,8 +1497,8 @@ export function personMeds(snap: Snapshot = state): Med[] {
   return snap.meds.filter((m) => m.personId === id);
 }
 
-export function medKey(med: Pick<Med, "name" | "dose">): string {
-  return `${med.name.trim().toLowerCase()}|${med.dose.trim().toLowerCase()}`;
+export function medKey(med: Pick<Med, "name">): string {
+  return med.name.trim().toLowerCase();
 }
 
 export function catalogMeds(snap: Snapshot = state): Med[] {
@@ -1525,7 +1525,7 @@ export function assignedPeople(snap: Snapshot, med: Med): Person[] {
   return snap.people.filter((p) => ids.has(p.id));
 }
 
-export function assignMedToPerson(medId: string, personId: string) {
+export function assignMedToPerson(medId: string, personId: string, stock: number | null = null) {
   const src = state.meds.find((m) => m.id === medId);
   if (!src || !state.people.some((p) => p.id === personId)) return;
   if (state.meds.some((m) => m.personId === personId && medKey(m) === medKey(src))) return;
@@ -1537,6 +1537,7 @@ export function assignMedToPerson(medId: string, personId: string) {
         id: nid(),
         personId,
         createdAt: Date.now(),
+        stock,
       },
     ],
   });
@@ -1601,13 +1602,23 @@ export function removeMed(id: string) {
   });
 }
 
-export function refillMed(id: string) {
+export function setPersonStock(id: string, stock: number | null) {
   set({
-    meds: state.meds.map((m) => {
-      if (m.id !== id) return m;
-      const add = m.packSize ?? m.stock ?? 0;
-      return { ...m, stock: (m.stock ?? 0) + add };
-    }),
+    meds: state.meds.map((m) =>
+      m.id === id ? { ...m, stock: stock == null ? null : Math.max(0, stock) } : m,
+    ),
+  });
+}
+
+export function refillMed(id: string) {
+  const src = state.meds.find((m) => m.id === id);
+  if (!src) return;
+  const add = src.packSize ?? src.stock ?? 0;
+  if (!add) return;
+  set({
+    meds: state.meds.map((m) =>
+      m.id === id ? { ...m, stock: (m.stock ?? 0) + add } : m,
+    ),
   });
 }
 

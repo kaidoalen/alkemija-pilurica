@@ -13,11 +13,19 @@ export function daysOfStock(med: Med): number | null {
 }
 
 export function stockWarning(med: Med): "none" | "low" | "out" {
+  if (med.stock == null) return "none";
+  if (med.stock <= 0) return "out";
   const days = daysOfStock(med);
-  if (days == null) return "none";
-  if (days <= 0) return "out";
-  if (days < 3) return "low";
+  if (days != null && days <= 3) return "low";
   return "none";
+}
+
+export function daysLeftLabel(med: Med): string | null {
+  const days = daysOfStock(med);
+  if (days == null) return null;
+  if (days <= 0) return "nema zalihe";
+  const n = Math.max(1, Math.ceil(days));
+  return n === 1 ? "još 1 dan" : `još ${n} dana`;
 }
 
 export function expiryWarning(
@@ -34,12 +42,10 @@ export function expiryWarning(
 
 export function formatStock(med: Med): string | null {
   if (med.stock == null) return null;
-  const unit = med.form || "kom";
-  const days = daysOfStock(med);
-  if (days == null) return `${med.stock} ${unit}`;
-  if (days <= 0) return `${med.stock} ${unit} · nema zalihe`;
-  if (days < 3) return `${med.stock} ${unit} · još ${days < 1 ? "<1" : days.toFixed(1)} d`;
-  return `${med.stock} ${unit}`;
+  const warn = stockWarning(med);
+  if (warn === "out") return `${med.stock} kom · nema zalihe`;
+  if (warn === "low") return `${med.stock} kom · ${daysLeftLabel(med)}`;
+  return `${med.stock} kom`;
 }
 
 export function formatExpiry(med: Med): string | null {

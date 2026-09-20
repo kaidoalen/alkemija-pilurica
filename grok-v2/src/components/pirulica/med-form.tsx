@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Camera, Loader2, X } from "lucide-react";
+import { Camera, Images, Loader2, X } from "lucide-react";
 import { compressImage, thumbImage } from "@/lib/pirulica/image";
 import { nid } from "@/lib/pirulica/ids";
 import { readBoxLabel } from "@/lib/pirulica/scan";
@@ -37,7 +37,8 @@ export function MedForm({
   onSave: (med: Med) => void;
   onDelete?: (id: string) => void;
 }) {
-  const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(initial?.name ?? "");
   const [dose, setDose] = useState(initial?.dose ?? "");
   const [form, setForm] = useState(initial?.form ?? "tablete");
@@ -83,42 +84,46 @@ export function MedForm({
     setCustomTime("");
   }
 
-  async function onPhoto(file: File | undefined) {
-    if (!file) return;
-    const first = photos.length === 0;
+  async function onPhotos(list: FileList | File[] | null | undefined) {
+    const files = [...(list ?? [])].filter((f) => f.type.startsWith("image/") || /\.(jpe?g|png|webp|heic|gif)$/i.test(f.name));
+    if (!files.length) return;
+    let added = photos.length;
     setScanState("busy");
-    setScanMsg(first ? "Čitam kutiju…" : "Dodajem sliku…");
-    try {
-      const dataUrl = await compressImage(file);
-      const thumb = await thumbImage(dataUrl);
-      setPhotos((cur) => [
-        ...cur,
-        {
-          id: nid(),
-          kind: cur.length === 0 ? "box" : cur.length === 1 ? "blister" : "tablet",
-          slot: cur.length,
-          src: thumb,
-        },
-      ]);
-      if (!first) {
-        setScanState("ok");
-        setScanMsg("Slika je dodana.");
-        return;
-      }
-      const result = await readBoxLabel({ data: { image: dataUrl } });
-      if (result.ok) {
-        if (result.box.name) setName(result.box.name);
-        if (result.box.dose) setDose(result.box.dose);
-        if (result.box.form) setForm(result.box.form);
-        setScanState("ok");
-        setScanMsg("Predloženi naziv i gramaža. Provjeri pa spremi.");
-      } else {
+    let scanned = false;
+    for (const file of files) {
+      const isFirst = added === 0;
+      setScanMsg(isFirst ? "Čitam kutiju…" : "Dodajem sliku…");
+      try {
+        const dataUrl = await compressImage(file);
+        const thumb = await thumbImage(dataUrl);
+        const kind = added === 0 ? "box" : added === 1 ? "blister" : "tablet";
+        const slot = added;
+        setPhotos((cur) => [...cur, { id: nid(), kind, slot, src: thumb }]);
+        added += 1;
+        if (isFirst && !scanned) {
+          scanned = true;
+          const result = await readBoxLabel({ data: { image: dataUrl } });
+          if (result.ok) {
+            if (result.box.name) setName(result.box.name);
+            if (result.box.form) setForm(result.box.form);
+            setScanState("ok");
+            setScanMsg("Predloženi naziv. Provjeri pa spremi.");
+          } else {
+            setScanState("err");
+            setScanMsg(result.error);
+          }
+        } else {
+          setScanState("ok");
+        }
+      } catch {
         setScanState("err");
-        setScanMsg(result.error);
+        setScanMsg("Slika se nije dala obraditi. Upiši naziv ručno.");
       }
-    } catch {
-      setScanState("err");
-      setScanMsg("Slika se nije dala obraditi. Upiši naziv ručno.");
+    }
+    if (files.length > 1 && added > photos.length) {
+      setScanMsg(`Dodano ${files.length} slika iz galerije.`);
+    } else if (!scanned && added > photos.length) {
+      setScanMsg("Slika je dodana.");
     }
   }
 
@@ -138,7 +143,11 @@ export function MedForm({
       days: [...days].sort((a, b) => a - b),
       active,
       createdAt: initial?.createdAt ?? Date.now(),
-      stock: stockN != null && Number.isFinite(stockN) ? stockN : null,
+      stock: hideOwner
+        ? (initial?.stock ?? null)
+        : stockN != null && Number.isFinite(stockN)
+          ? stockN
+          : null,
       packSize: packN != null && Number.isFinite(packN) ? packN : null,
       tabletsPerDose: Math.max(1, Number(perDose) || 1),
       expiry: expiry || null,
@@ -166,12 +175,26 @@ export function MedForm({
 
       <div className="flex-1 space-y-5 overflow-y-auto px-5 pb-8">
         <input
-          ref={fileRef}
+          ref={cameraRef}
           type="file"
           accept="image/*"
           capture="environment"
           className="hidden"
-          onChange={(e) => void onPhoto(e.target.files?.[0])}
+          onChange={(e) => {
+            void onPhotos(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        <input
+          ref={galleryRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            void onPhotos(e.target.files);
+            e.target.value = "";
+          }}
         />
 
         {photos.length ? (
@@ -196,31 +219,49 @@ export function MedForm({
           </div>
         ) : null}
 
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          disabled={scanState === "busy"}
-          className="flex w-full items-center gap-3 rounded-[20px] bg-surface px-4 py-3 text-left shadow-[var(--shadow-card)]"
-        >
-          <span className="grid size-12 place-items-center rounded-[12px] bg-cream text-pine">
-            {scanState === "busy" ? (
-              <Loader2 className="size-5 animate-spin" />
-            ) : (
-              <Camera className="size-5" />
-            )}
-          </span>
-          <span className="min-w-0">
-            <span className="block text-sm font-medium text-ink">
-              {photos.length ? "Dodaj još sliku lijeka" : "Fotografiraj prednju stranu kutije"}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => cameraRef.current?.click()}
+            disabled={scanState === "busy"}
+            className="flex items-center gap-3 rounded-[20px] bg-surface px-3 py-3 text-left shadow-[var(--shadow-card)]"
+          >
+            <span className="grid size-11 shrink-0 place-items-center rounded-[12px] bg-cream text-pine">
+              {scanState === "busy" ? (
+                <Loader2 className="size-5 animate-spin" />
+              ) : (
+                <Camera className="size-5" />
+              )}
             </span>
-            <span className="mt-0.5 block text-xs text-muted text-pretty">
-              {scanMsg ||
-                (photos.length
-                  ? "Kutija, blister, tableta — sve vezane slike."
-                  : "Program predloži naziv i gramažu.")}
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-ink">Kamera</span>
+              <span className="mt-0.5 block text-xs text-muted">Slikaj kutiju</span>
             </span>
-          </span>
-        </button>
+          </button>
+          <button
+            type="button"
+            onClick={() => galleryRef.current?.click()}
+            disabled={scanState === "busy"}
+            className="flex items-center gap-3 rounded-[20px] bg-surface px-3 py-3 text-left shadow-[var(--shadow-card)]"
+          >
+            <span className="grid size-11 shrink-0 place-items-center rounded-[12px] bg-cream text-pine">
+              <Images className="size-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-ink">Galerija</span>
+              <span className="mt-0.5 block text-xs text-muted">Odaberi slike</span>
+            </span>
+          </button>
+        </div>
+        {scanMsg ? (
+          <p className="text-xs text-muted text-pretty">{scanMsg}</p>
+        ) : (
+          <p className="text-xs text-muted text-pretty">
+            {photos.length
+              ? "Kutija, blister, tableta — sve vezane slike, i s kamere i iz galerije."
+              : "Program predloži naziv s prednje strane kutije."}
+          </p>
+        )}
 
         <div className="space-y-2">
           <Label htmlFor="med-name">Naziv</Label>
@@ -232,27 +273,15 @@ export function MedForm({
             autoComplete="off"
           />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <Label htmlFor="med-dose">Gramaža</Label>
-            <Input
-              id="med-dose"
-              value={dose}
-              onChange={(e) => setDose(e.target.value)}
-              placeholder="npr. 5 mg"
-              autoComplete="off"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="med-form">Oblik</Label>
-            <Input
-              id="med-form"
-              value={form}
-              onChange={(e) => setForm(e.target.value)}
-              placeholder="tablete"
-              autoComplete="off"
-            />
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="med-form">Oblik</Label>
+          <Input
+            id="med-form"
+            value={form}
+            onChange={(e) => setForm(e.target.value)}
+            placeholder="tablete"
+            autoComplete="off"
+          />
         </div>
 
         {hideOwner || people.length <= 1 ? null : (
@@ -295,18 +324,37 @@ export function MedForm({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
-          <div className="space-y-2">
-            <Label htmlFor="med-stock">Broj tableta</Label>
-            <Input
-              id="med-stock"
-              value={stock}
-              onChange={(e) => setStock(e.target.value)}
-              placeholder="28"
-              inputMode="numeric"
-              className="tabular-nums"
-            />
-          </div>
+        {hideOwner ? null : (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="med-stock">Komada</Label>
+                <Input
+                  id="med-stock"
+                  value={stock}
+                  onChange={(e) => setStock(e.target.value)}
+                  placeholder="npr. 28"
+                  inputMode="numeric"
+                  className="tabular-nums"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="med-dose-n">U jednoj dozi</Label>
+                <Input
+                  id="med-dose-n"
+                  value={perDose}
+                  onChange={(e) => setPerDose(e.target.value)}
+                  inputMode="numeric"
+                  className="tabular-nums"
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted text-pretty">
+              Upiši koliko komada ima ova osoba. Kad napiše novi broj, zaliha se mijenja samo njoj.
+            </p>
+          </>
+        )}
+        {hideOwner ? (
           <div className="space-y-2">
             <Label htmlFor="med-dose-n">U jednoj dozi</Label>
             <Input
@@ -317,18 +365,7 @@ export function MedForm({
               className="tabular-nums"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="med-pack">Kutija</Label>
-            <Input
-              id="med-pack"
-              value={packSize}
-              onChange={(e) => setPackSize(e.target.value)}
-              placeholder="28"
-              inputMode="numeric"
-              className="tabular-nums"
-            />
-          </div>
-        </div>
+        ) : null}
 
         <div className="space-y-2">
           <Label htmlFor="med-expiry">Rok trajanja</Label>

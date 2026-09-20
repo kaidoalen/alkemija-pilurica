@@ -5,8 +5,10 @@ import {
   registerServiceWorker,
   requestNotificationPermission,
   showDoseNotification,
+  showStockNotification,
 } from "./notifications";
 import { dueUnacked, nextUpcoming, type PlannedDose } from "./schedule";
+import { daysOfStock, stockWarning } from "./stock";
 import {
   getSnapshot,
   markMissed,
@@ -23,6 +25,50 @@ let tickTimer: number | null = null;
 let vibrateLoop: number | null = null;
 let wakeLock: WakeLockSentinel | null = null;
 const fired = new Set<string>();
+const STOCK_NOTE_KEY = "pilurica-stock-notified";
+
+function stockSeen(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(STOCK_NOTE_KEY) || "[]") as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function rememberStockNote(id: string) {
+  const today = new Date().toISOString().slice(0, 10);
+  const next = stockSeen();
+  for (const item of [...next]) {
+    if (!item.endsWith(`:${today}`)) next.delete(item);
+  }
+  next.add(id);
+  try {
+    localStorage.setItem(STOCK_NOTE_KEY, JSON.stringify([...next]));
+  } catch {
+    /* ignore */
+  }
+}
+
+function checkStockAlerts() {
+  const snap = getSnapshot();
+  const today = new Date().toISOString().slice(0, 10);
+  const seen = stockSeen();
+  for (const med of snap.meds) {
+    const warn = stockWarning(med);
+    if (warn !== "low" && warn !== "out") continue;
+    const id = `${med.id}:${today}`;
+    if (seen.has(id)) continue;
+    rememberStockNote(id);
+    const days = warn === "out" ? 0 : Math.max(1, Math.ceil(daysOfStock(med) ?? 1));
+    const personName = snap.people.find((p) => p.id === med.personId)?.name ?? "";
+    void showStockNotification({
+      medId: med.id,
+      name: med.name,
+      personName,
+      days,
+    });
+  }
+}
 
 function clearTimer() {
   if (timer != null) {
@@ -210,6 +256,7 @@ export function startEngine() {
   void registerServiceWorker();
   void persistAndSync();
   armNext();
+  checkStockAlerts();
   document.addEventListener("visibilitychange", onVisibility);
   window.addEventListener("focus", armNext);
   window.addEventListener("pageshow", armNext);
@@ -218,6 +265,7 @@ export function startEngine() {
   subscribe(() => {
     void writeSchedule(getSnapshot());
     armNext();
+    checkStockAlerts();
   });
   window.addEventListener("pilurica-changed", () => {
     void persistAndSync();

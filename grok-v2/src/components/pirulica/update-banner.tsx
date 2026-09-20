@@ -1,25 +1,51 @@
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { APP_VERSION } from "@/lib/pirulica/version";
+import { CapsuleMark } from "./capsule";
 
-export function WhatsNewCard({ onDismiss }: { onDismiss: () => void }) {
+const NEWS = [
+  "Tab Osobe — isti lijek može dobiti više osoba.",
+  "Za svaku osobu upiši koliko komada ima; Uzmi skida samo njoj.",
+  "Obavijest 3 dana prije nego lijek nestane uz redovnu potrošnju.",
+  "Slike s kamere ili iz galerije. Gramažu ne tražim.",
+];
+
+export function UpdateNotice({ onDismiss }: { onDismiss: () => void }) {
   return (
-    <section className="rounded-[24px] bg-pine px-5 py-5 text-pine-fg shadow-[var(--shadow-card)]">
-      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-pine-fg/70">
-        Verzija {APP_VERSION}
-      </p>
-      <h2 className="mt-2 font-display text-2xl tracking-[-0.03em]">Nova verzija</h2>
-      <p className="mt-2 text-sm text-pine-fg/80 text-pretty">
-        Alarm, slika kutije, zaliha, više osoba. Zapisi ostaju.
-      </p>
-      <Button
-        variant="outline"
-        className="mt-5 w-full bg-pine-fg text-pine"
-        onClick={onDismiss}
-      >
-        U redu
-      </Button>
-    </section>
+    <div className="fixed inset-0 z-50 flex flex-col bg-paper">
+      <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+        <div className="flex items-center gap-2">
+          <CapsuleMark size={22} />
+          <p className="font-display text-xl tracking-[-0.03em]">Pilurica</p>
+        </div>
+        <section className="mt-8 flex flex-1 flex-col rounded-[28px] bg-pine px-5 py-6 text-pine-fg shadow-[var(--shadow-card)]">
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-pine-fg/70">
+            Ažuriranje · verzija {APP_VERSION}
+          </p>
+          <h1 className="mt-3 font-display text-3xl tracking-[-0.03em]">Nova verzija</h1>
+          <p className="mt-2 text-sm text-pine-fg/80 text-pretty">
+            Što je novo. Zapisi ostaju.
+          </p>
+          <ul className="mt-6 space-y-3 text-sm text-pine-fg/90">
+            {NEWS.map((line) => (
+              <li key={line} className="flex gap-3">
+                <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-pine-fg/80" />
+                <span className="text-pretty">{line}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-auto pt-8">
+            <Button
+              variant="outline"
+              className="w-full bg-pine-fg text-pine"
+              onClick={onDismiss}
+            >
+              U redu
+            </Button>
+          </div>
+        </section>
+      </div>
+    </div>
   );
 }
 

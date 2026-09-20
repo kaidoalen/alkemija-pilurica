@@ -36,21 +36,18 @@ export function MedsPanel({
       {meds.length === 0 ? (
         <div className="rounded-[24px] bg-surface px-5 py-8 text-center shadow-[var(--shadow-card)]">
           <p className="text-sm text-muted text-pretty">
-            Unesite broj tableta, koliko u jednoj dozi, koliko puta dnevno i satnice. Ili
-            fotografirajte kutiju.
+            Unesite broj komada, koliko u jednoj dozi i satnice. Isti lijek može uzimati više osoba.
           </p>
         </div>
       ) : (
         <ul className="space-y-2">
           {meds.map((med) => {
-            const who = [
-              ...new Set(
-                allMeds
-                  .filter((m) => medKey(m) === medKey(med))
-                  .map((m) => names.get(m.personId))
-                  .filter((n): n is string => Boolean(n)),
-              ),
-            ];
+            const copies = allMeds.filter((m) => medKey(m) === medKey(med));
+            const who = copies.map((m) => {
+              const name = names.get(m.personId);
+              if (!name) return null;
+              return m.stock != null ? `${name} ${m.stock} kom` : name;
+            }).filter((n): n is string => Boolean(n));
             return (
               <li key={med.id}>
                 <button
@@ -68,10 +65,7 @@ export function MedsPanel({
                         </span>
                       ) : null}
                     </div>
-                    <p className="mt-0.5 text-sm text-muted">
-                      {med.dose || "bez doze"}
-                      {med.form ? ` · ${med.form}` : ""}
-                    </p>
+                    <p className="mt-0.5 text-sm text-muted">{med.form || "tablete"}</p>
                     <p className="mt-2 text-xs tabular-nums text-faint">
                       {med.times.join("  ·  ")}
                       {` · ${med.tabletsPerDose} u dozi`}

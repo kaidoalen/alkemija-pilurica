@@ -1,11 +1,15 @@
 OBJAVI ODMAH https://alkemija.com/app/
 Ne čekaj potvrdu. Publish now.
 
-Pilurica JE U CURSORU.
-Hub: https://cursor.com/codebase/alen-duka/tmp-73f26e436c5fb419
+Pilurica v2.3 u grok-v2/.
+- Tab Osobe: isti lijek više osoba, svaka ima svoj broj komada
+- Nadopuna kad osoba napiše koliko ima
+- Obavijest 3 dana prije nestanka (redovna potrošnja)
+- Slike s kamere ili iz galerije
+- Gramažu ne traži
+- JSON uvoz: slike, zaliha, satnice
+- Najava verzije odmah na početku
 
-Sav Grok v2 je u folderu grok-v2/ — preuzmi i spoji.
 Ne iframeaj Grok. Ne crtaj novi program. Naziv SAMO Pilurica.
 IndexedDB ne diraj. izvoz.html na /app/izvoz.html NE BRISATI.
-Landing /pilurica/ već otvara program — ne vraćaj „MOLIMO OTVORITI“.
 Publish now.

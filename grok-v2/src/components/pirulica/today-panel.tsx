@@ -6,7 +6,7 @@ import {
   remainingLabel,
   todayPlan,
 } from "@/lib/pirulica/schedule";
-import { expiryWarning, stockWarning } from "@/lib/pirulica/stock";
+import { daysLeftLabel, expiryWarning, stockWarning } from "@/lib/pirulica/stock";
 import type { Snapshot } from "@/lib/pirulica/store";
 import { UPUTE } from "@/lib/pirulica/upute";
 import type { Med } from "@/lib/pirulica/types";
@@ -53,10 +53,7 @@ export function TodayPanel({
               <h2 className="font-display text-3xl font-medium leading-none tracking-[-0.03em]">
                 {next.name}
               </h2>
-              <p className="mt-2 text-sm text-pine-fg/75">
-                {next.dose ? `${next.dose} · ` : null}
-                {formatHm(next.at)}
-              </p>
+              <p className="mt-2 text-sm text-pine-fg/75">{formatHm(next.at)}</p>
             </div>
             <p className="font-display text-xl tabular-nums tracking-tight">
               {remainingLabel(next.at, now)}
@@ -132,7 +129,7 @@ export function TodayPanel({
             const exp = expiryWarning(m, now);
             const bits: string[] = [];
             if (stock === "out") bits.push("nema zalihe");
-            else if (stock === "low") bits.push("zaliha ispod 3 dana");
+            else if (stock === "low") bits.push(daysLeftLabel(m) ?? "zaliha nestaje");
             if (exp === "expired") bits.push("rok istekao");
             else if (exp === "soon") bits.push("rok ističe");
             return (
@@ -170,10 +167,9 @@ export function TodayPanel({
                     >
                       {dose.name}
                     </p>
-                    <p className="text-xs text-muted">
-                      {dose.dose || "doza"}
-                      {overdue ? " · kasni" : ""}
-                    </p>
+                    {overdue ? (
+                      <p className="text-xs text-muted">kasni</p>
+                    ) : null}
                   </div>
                   <p className="text-sm tabular-nums text-muted">{formatHm(dose.at)}</p>
                   {taken ? (

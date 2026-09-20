@@ -94,6 +94,51 @@ export async function showDoseNotification(dose: PlannedDose) {
   }
 }
 
+export async function showStockNotification(opts: {
+  medId: string;
+  name: string;
+  personName: string;
+  days: number;
+}) {
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+  const day = new Date().toISOString().slice(0, 10);
+  const who = opts.personName && opts.personName !== "Ja" ? `${opts.personName} · ` : "";
+  const when =
+    opts.days <= 0
+      ? "nema zalihe"
+      : opts.days === 1
+        ? "nestat će sutra"
+        : `nestat će za ${opts.days} dana`;
+  const title = "Zaliha nestaje";
+  const body = `${who}${opts.name} — ${when}`;
+  const tag = `pilurica-stock-${opts.medId}-${day}`;
+  const options: NotificationOptions = {
+    body,
+    tag,
+    renotify: false,
+    requireInteraction: false,
+    silent: false,
+    data: { url: "/?tab=osobe" },
+    badge: "/icon-192.png",
+    icon: "/icon-192.png",
+  };
+  const sw = typeof navigator !== "undefined" ? navigator.serviceWorker?.controller : null;
+  if (sw) {
+    sw.postMessage({ type: "notify", payload: { title, body, ...options } });
+    return;
+  }
+  try {
+    const reg = await navigator.serviceWorker?.ready;
+    if (reg) {
+      await reg.showNotification(title, options);
+      return;
+    }
+  } catch {
+    /* fall through */
+  }
+  new Notification(title, options);
+}
+
 export async function closeDoseNotification(occurrenceId: string) {
   const tags = [`pilurica-${occurrenceId}`, `pirulica-${occurrenceId}`];
   try {

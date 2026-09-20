@@ -42,7 +42,7 @@ import { OldPullOverlay } from "./old-pull-overlay";
 import { PeoplePanel } from "./people-panel";
 import { SettingsPanel } from "./settings-panel";
 import { TodayPanel } from "./today-panel";
-import { RefreshCard, WhatsNewCard } from "./update-banner";
+import { RefreshCard, UpdateNotice } from "./update-banner";
 
 type Tab = "today" | "meds" | "people" | "settings";
 type EditMode = "catalog" | "copy";
@@ -67,7 +67,7 @@ export function PiluricaApp() {
   const [tab, setTab] = useState<Tab>("today");
   const [editing, setEditing] = useState<Med | null | undefined>(undefined);
   const [editMode, setEditMode] = useState<EditMode>("catalog");
-  const [whatsNew, setWhatsNew] = useState(false);
+  const [whatsNew, setWhatsNew] = useState(() => needsWhatsNew());
   const [staleRefresh, setStaleRefresh] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [recoverNote, setRecoverNote] = useState<string | null>(null);
@@ -79,7 +79,6 @@ export function PiluricaApp() {
       await hydrateFromStorage();
       if (cancelled) return;
       startEngine();
-      setWhatsNew(needsWhatsNew());
       setStaleRefresh(needsStaleRefresh());
     })();
     const stopListen = listenForOldPilurica((r) => {
@@ -155,6 +154,19 @@ export function PiluricaApp() {
     setEditing(med);
   }
 
+  if (whatsNew) {
+    return (
+      <div className="min-h-dvh bg-paper text-ink">
+        <UpdateNotice
+          onDismiss={() => {
+            dismissWhatsNew();
+            setWhatsNew(false);
+          }}
+        />
+      </div>
+    );
+  }
+
   if (!snap.hydrated) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-paper text-muted">
@@ -209,14 +221,7 @@ export function PiluricaApp() {
           ) : null}
           {tab === "today" ? (
             <div className="space-y-5">
-              {whatsNew ? (
-                <WhatsNewCard
-                  onDismiss={() => {
-                    dismissWhatsNew();
-                    setWhatsNew(false);
-                  }}
-                />
-              ) : staleRefresh ? (
+              {staleRefresh ? (
                 <RefreshCard busy={updating} onUpdate={() => void runUpdate()} />
               ) : null}
               <TodayPanel

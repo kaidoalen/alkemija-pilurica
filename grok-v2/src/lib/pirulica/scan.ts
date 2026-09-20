@@ -49,14 +49,14 @@ export const readBoxLabel = createServerFn({ method: "POST" })
           {
             role: "system",
             content:
-              "Čitaš prednju stranu kutije lijeka. Vrati isključivo JSON: {\"name\":\"zaštićeni naziv\",\"dose\":\"jačina npr. 5 mg\",\"form\":\"tablete|kapsule|kapi|sirup|sprej|ostalo\"}. Ako nije kutija lijeka, prazna polja.",
+              "Čitaš prednju stranu kutije lijeka. Vrati isključivo JSON: {\"name\":\"zaštićeni naziv\",\"dose\":\"\",\"form\":\"tablete|kapsule|kapi|sirup|sprej|ostalo\"}. Gramažu ne traži. Ako nije kutija lijeka, prazna polja.",
           },
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: "Izvuci naziv, gramažu i oblik s prednje strane kutije.",
+                text: "Izvuci samo naziv i oblik s prednje strane kutije. Gramažu preskoči.",
               },
               { type: "image_url", image_url: { url: data.image } },
             ],
@@ -66,6 +66,15 @@ export const readBoxLabel = createServerFn({ method: "POST" })
     });
 
     if (!res.ok) {
+      let detail = "";
+      try {
+        detail = await res.text();
+      } catch {
+        detail = "";
+      }
+      if (/invalid_image|too small|too large/i.test(detail)) {
+        return { ok: false, error: "Slika nije dovoljno jasna. Fotografiraj kutiju izbliza." };
+      }
       return { ok: false, error: "Kutija se nije dala pročitati. Upiši naziv ručno." };
     }
 
@@ -74,7 +83,7 @@ export const readBoxLabel = createServerFn({ method: "POST" })
     };
     const text = body.choices?.[0]?.message?.content ?? "";
     const box = parseBox(text);
-    if (!box.name && !box.dose) {
+    if (!box.name) {
       return { ok: false, error: "Na slici nisam našao naziv lijeka." };
     }
     return { ok: true, box };
