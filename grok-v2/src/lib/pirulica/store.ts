@@ -413,6 +413,68 @@ function strengthFromName(name: string): string {
   return m ? m[1].replace(/\s+/g, " ").trim() : "";
 }
 
+const PERSON_NAME_KEYS = [
+  "name",
+  "naziv",
+  "ime",
+  "title",
+  "displayName",
+  "label",
+  "fullName",
+  "personName",
+  "patientName",
+];
+
+function personNameOf(r: Record<string, unknown>): string {
+  return firstString(r, PERSON_NAME_KEYS);
+}
+
+function isJaName(name: string): boolean {
+  return name.trim().toLowerCase() === "ja";
+}
+
+function nestedPerson(r: Record<string, unknown>): Record<string, unknown> | null {
+  for (const key of ["patient", "person", "osoba", "owner", "profile"]) {
+    const v = r[key];
+    if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
+  }
+  return null;
+}
+
+function looksLikeId(value: string): boolean {
+  const v = value.trim();
+  if (!v || /\s/.test(v)) return false;
+  if (v === DEFAULT_PERSON_ID || v.toLowerCase() === "ja") return true;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)) {
+    return true;
+  }
+  return /^[a-z0-9_-]{8,}$/i.test(v);
+}
+
+function asPersonId(r: Record<string, unknown>): string {
+  const nested = nestedPerson(r);
+  const direct = firstString(r, ["personId", "patientId", "ownerId", "profileId"]);
+  if (direct) return direct;
+  if (nested) {
+    const id = firstString(nested, ["id", "_id"]);
+    if (id) return id;
+  }
+  for (const key of ["person", "osoba", "owner"]) {
+    const v = r[key];
+    if (typeof v === "string" && looksLikeId(v)) return v.trim();
+  }
+  return "";
+}
+
+function asPersonNameFromMed(r: Record<string, unknown>): string {
+  const nested = nestedPerson(r);
+  const fromMed = firstString(r, ["personName", "patientName", "ownerName"]);
+  if (fromMed) return fromMed;
+  if (typeof r.osoba === "string" && r.osoba.trim() && !looksLikeId(r.osoba)) return r.osoba.trim();
+  if (typeof r.person === "string" && r.person.trim() && !looksLikeId(r.person)) return r.person.trim();
+  return nested ? personNameOf(nested) : "";
+}
+
 function asPhoto(r: Record<string, unknown>): string | null {
   const keys = [
     "photo",
@@ -487,7 +549,7 @@ function asMed(raw: unknown): Med | null {
     strengthFromName(name);
   return {
     id: String(r.id ?? r._id ?? nid()),
-    personId: String(r.personId ?? r.patientId ?? r.person ?? r.osoba ?? r.ownerId ?? DEFAULT_PERSON_ID),
+    personId: asPersonId(r) || DEFAULT_PERSON_ID,
     name,
     dose,
     form: firstString(r, ["form", "oblik", "type", "vrsta"]) || "tablete",
@@ -518,12 +580,95 @@ function asPerson(raw: unknown): Person | null {
   }
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
-  const name = firstString(r, ["name", "naziv", "ime", "title"]);
-  if (!name) return null;
+  const name = personNameOf(r);
+  const id = firstString(r, ["id", "_id", "patientId", "personId"]);
+  if (!id && !name) return null;
   return {
-    id: String(r.id ?? r._id ?? nid()),
+    id: id || nid(),
     name: name.slice(0, 40),
     createdAt: Number(r.createdAt) || Date.now(),
+  };
+}
+
+function upsertNamedPerson(list: Person[], id: string, name: string): Person[] {
+  const label = name.trim().slice(0, 40);
+  const existing = list.find(
+    (p) =>
+      (id && p.id === id) ||
+      (label && p.name.trim().toLowerCase() === label.toLowerCase()),
+  );
+  if (existing) {
+    if (label && (!existing.name.trim() || isJaName(existing.name))) {
+      return list.map((p) => (p.id === existing.id ? { ...p, name: label } : p));
+    }
+    return list;
+  }
+  if (!id && !label) return list;
+  return [...list, { id: id || nid(), name: label, createdAt: Date.now() }];
+}
+
+function peopleFromBundle(peopleRaw: unknown[], medsRaw: unknown[]): Person[] {
+  let people = peopleRaw.map(asPerson).filter((p): p is Person => Boolean(p));
+  for (const raw of medsRaw) {
+    if (!raw || typeof raw !== "object") continue;
+    const r = raw as Record<string, unknown>;
+    people = upsertNamedPerson(people, asPersonId(r), asPersonNameFromMed(r));
+  }
+  return people;
+}
+
+function remapOrphans(people: Person[], meds: Med[]): Med[] {
+  if (!people.length) return meds;
+  const ids = new Set(people.map((p) => p.id));
+  const fallback = people[0].id;
+  return meds.map((m) => (ids.has(m.personId) ? m : { ...m, personId: fallback }));
+}
+
+function dropUndefinedJa(
+  people: Person[],
+  meds: Med[],
+  settings: Settings,
+  jaDefined: boolean,
+): { people: Person[]; meds: Med[]; settings: Settings } {
+  if (jaDefined) {
+    const nextPeople = people.length ? people : [{ ...DEFAULT_PERSON }];
+    return {
+      people: nextPeople,
+      meds: remapOrphans(nextPeople, meds),
+      settings: {
+        ...settings,
+        currentPersonId: nextPeople.some((p) => p.id === settings.currentPersonId)
+          ? settings.currentPersonId
+          : nextPeople[0].id,
+      },
+    };
+  }
+  const real = people.filter((p) => p.name.trim() && !isJaName(p.name));
+  if (!real.length) {
+    const leftover = people.filter((p) => p.name.trim() || p.id !== DEFAULT_PERSON_ID);
+    const nextPeople = leftover.length ? leftover : [{ ...DEFAULT_PERSON }];
+    return {
+      people: nextPeople,
+      meds: remapOrphans(nextPeople, meds),
+      settings: {
+        ...settings,
+        currentPersonId: nextPeople.some((p) => p.id === settings.currentPersonId)
+          ? settings.currentPersonId
+          : nextPeople[0].id,
+      },
+    };
+  }
+  const kept = new Set(real.map((p) => p.id));
+  const fallback = real[0].id;
+  return {
+    people: real,
+    meds: meds.map((m) => (kept.has(m.personId) ? m : { ...m, personId: fallback })),
+    settings: {
+      ...settings,
+      currentPersonId: real.some((p) => p.id === settings.currentPersonId)
+        ? settings.currentPersonId
+        : fallback,
+    },
   };
 }
 
@@ -645,9 +790,7 @@ function fromParsed(parsed: Partial<Snapshot> | ExportPayload | Record<string, u
     "profiles",
     "users",
   ]);
-  let people = peopleRaw.map(asPerson).filter((p): p is Person => Boolean(p));
-  if (!people.length) people = [{ ...DEFAULT_PERSON }];
-  const meds = pickArray(rec, [
+  const medsRaw = pickArray(rec, [
     "meds",
     "medications",
     "medicines",
@@ -657,10 +800,10 @@ function fromParsed(parsed: Partial<Snapshot> | ExportPayload | Record<string, u
     "items",
     "therapies",
     "tablete",
-  ])
-    .map(asMed)
-    .filter((m): m is Med => Boolean(m))
-    .map((m) => (people.some((p) => p.id === m.personId) ? m : { ...m, personId: people[0].id }));
+  ]);
+  const people = peopleFromBundle(peopleRaw, medsRaw);
+  const jaDefined = people.some((p) => isJaName(p.name));
+  const meds = medsRaw.map(asMed).filter((m): m is Med => Boolean(m));
   const withPhotos = attachOldPhotos(meds, pickArray(rec, ["photos", "slike", "images"]));
   const logsRaw = pickArray(rec, [
     "logs",
@@ -672,16 +815,13 @@ function fromParsed(parsed: Partial<Snapshot> | ExportPayload | Record<string, u
   ]);
   const logs = logsRaw.map(asLog).filter((l): l is DoseLog => Boolean(l));
   const snoozes = (Array.isArray(rec.snoozes) ? rec.snoozes : []) as PlannedDose[];
-  const settings = asSettings(rec.settings ?? rec);
-  if (!people.some((p) => p.id === settings.currentPersonId)) {
-    settings.currentPersonId = people[0].id;
-  }
+  const cleaned = dropUndefinedJa(people, withPhotos, asSettings(rec.settings ?? rec), jaDefined);
   return {
-    people,
-    meds: withPhotos,
+    people: cleaned.people,
+    meds: cleaned.meds,
     logs: Array.isArray(logs) ? logs : [],
     snoozes: Array.isArray(snoozes) ? snoozes : [],
-    settings,
+    settings: cleaned.settings,
     ringing: null,
     hydrated: true,
   };
@@ -740,16 +880,25 @@ function richerMed(a: Med, b: Med): Med {
 }
 
 function mergeSnapshots(base: Snapshot, extra: Snapshot): Snapshot {
-  const people = [...base.people];
+  const extraDefinesJa = extra.people.some((p) => isJaName(p.name));
+  const bareJa =
+    base.meds.length === 0 &&
+    base.people.length === 1 &&
+    isJaName(base.people[0]?.name ?? "");
+  const people: Person[] = (bareJa ? [] : base.people).map((p) => ({ ...p }));
   const personIdMap = new Map<string, string>();
   for (const p of extra.people) {
     const existing = people.find(
-      (x) => x.id === p.id || x.name.trim().toLowerCase() === p.name.trim().toLowerCase(),
+      (x) => x.id === p.id || (p.name.trim() && x.name.trim().toLowerCase() === p.name.trim().toLowerCase()),
     );
     if (existing) {
       personIdMap.set(p.id, existing.id);
-    } else {
-      people.push(p);
+      if (p.name.trim() && (isJaName(existing.name) || !existing.name.trim())) {
+        const idx = people.findIndex((x) => x.id === existing.id);
+        if (idx >= 0) people[idx] = { ...existing, name: p.name.slice(0, 40) };
+      }
+    } else if (p.name.trim() || p.id) {
+      people.push({ ...p, name: p.name.slice(0, 40) });
     }
   }
   const meds = [...base.meds];
@@ -778,16 +927,13 @@ function mergeSnapshots(base: Snapshot, extra: Snapshot): Snapshot {
     if (!logs.some((x) => x.id === l.id)) logs.push(l);
   }
   const settings = { ...base.settings, ...extra.settings };
-  const mappedCurrent = personIdMap.get(settings.currentPersonId) ?? settings.currentPersonId;
-  settings.currentPersonId = people.some((p) => p.id === mappedCurrent)
-    ? mappedCurrent
-    : (people[0]?.id ?? DEFAULT_PERSON_ID);
+  const cleaned = dropUndefinedJa(people, meds, settings, extraDefinesJa);
   return {
-    people,
-    meds,
+    people: cleaned.people,
+    meds: cleaned.meds,
     logs,
     snoozes: extra.snoozes.length ? extra.snoozes : base.snoozes,
-    settings,
+    settings: cleaned.settings,
     ringing: null,
     hydrated: true,
   };
@@ -1126,7 +1272,7 @@ export async function ingestOldExport(raw: unknown): Promise<RecoverReport> {
   }
   const incoming = fromParsed(raw as Record<string, unknown>);
   incoming.meds = await shrinkIncomingPhotos(incoming.meds);
-  if (!incoming.meds.length && incoming.people.length <= 1) {
+  if (!incoming.meds.length && !incoming.people.some((p) => p.name.trim() && !isJaName(p.name))) {
     const onlyPhotos = pickArray(raw as Record<string, unknown>, ["photos", "slike", "images"]);
     if (onlyPhotos.length) {
       for (const p of onlyPhotos) await ingestOldPhoto(p);
