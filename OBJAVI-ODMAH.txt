@@ -1,0 +1,8 @@
+OBJAVI ODMAH https://alkemija.com/pilurica/
+Ne čekaj potvrdu. Publish now.
+
+Program je GOTOV (Pilurica 2.0). Zamijeni landing „MOLIMO OTVORITI NA MOBITELU“ živim programom.
+Naziv SAMO Pilurica (od pilola i urica). Ne diraj druge stranice.
+Zalijepi wordpress-pilurica.html. REPLACE_WITH_PILURICA_ORIGIN = javni HTTPS ovog Grok programa (nakon Objavi), bez crte na kraju.
+Ne reimplementiraj alarme u WordPressu. Ne koristi sandbox pregled.
+Osobe, lijekovi i zapisi ostaju preko Ažuriraj / JSON. Publish now.
