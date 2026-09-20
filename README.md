@@ -1,10 +1,7 @@
-# Pilurica 2.0 — Cursor brief + Grok v2 izvor
+# Pilurica — predaja za Cursor
 
-Živi program: https://alkemija.com/app/
+Cijelo znanje: **ZNANJE-ZA-CURSOR.md**
+Kod: **grok-v2/**
+Objava: https://alkemija.com/app/
 
-Cursor: otvori `CURSOR.md` i `OBJAVI-ODMAH.txt`, uzmi folder `grok-v2/`, spoji u Hub, objavi odmah.
-
-- Naziv samo **Pilurica**
-- Ne brisati IndexedDB
-- Ne brisati `app/izvoz.html`
-- Ne iframeati Grok
+Naziv SAMO Pilurica. Ne iframeaj Grok. IndexedDB i izvoz.html ne diraj.

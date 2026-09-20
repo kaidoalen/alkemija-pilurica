@@ -1,13 +1,17 @@
-# Grok v2 — spoji u Cursor Hub
+# Grok v2.3 — spoji u Cursor Hub
 
-Ovo nije zamjena za Hub projekt. Ovo su datoteke koje treba **ugraditi**.
+Ovo nije zamjena za Hub. Ovo su datoteke koje treba **ugraditi**.
+Cijelo znanje: ../ZNANJE-ZA-CURSOR.md
 
-Najvažnije:
-- `src/lib/pirulica/engine.ts` + `audio.ts` — alarm koji ne preskače, proba zvuka
-- `src/lib/pirulica/store.ts` — uvoz stare baze (patients/medicines/photos/clockTimes/remainingTablets)
-- `src/components/pirulica/old-pull-overlay.tsx` + `app.tsx` — gumb Preuzmi iz stare Pilurice
-- `public/izvoz.html` — već uživo na alkemija.com/app/izvoz.html
-- `public/sw.js` — SKIP_WAITING, bez cachea HTML-a
+Verzija 2.3:
+- Tabovi Raspored / Lijekovi (katalog) / Osobe / Postavke
+- Isti lijek više osoba, stock po osobi, setPersonStock, assignMedToPerson(..., stock)
+- Upozorenje + notifikacija 3 dana prije nestanka (stock.ts + engine.checkStockAlerts)
+- Kamera + galerija (med-form.tsx)
+- Bez gramaže u UI i skeneru
+- UpdateNotice odmah na startu (update-banner.tsx, version 2.3)
+- JSON uvoz + dropUndefinedJa (store.ts)
+- Alarm: engine.ts + audio.ts + sw.js
 
-Stara Dexie baza: `lijekovi-podsjetnik` (isti origin alkemija.com).
-PostMessage: `{ type: "pilurica-stara-kopija", payload }`.
+Stara Dexie: `lijekovi-podsjetnik`. PostMessage: `{ type: "pilurica-stara-kopija", payload }`.
+izvoz.html već uživo — ne zamijeni SPA fallbackom.

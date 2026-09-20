@@ -1,12 +1,14 @@
-NAZIV ZADATKA: alkemija pilurica 2.0
+NAZIV ZADATKA: alkemija pilurica 2.3
 OBJAVI ODMAH na https://alkemija.com/app/
 
-Ovo je ažuriranje starog Cursor programa. Uzmi folder grok-v2/ i spoji.
+Pročitaj ZNANJE-ZA-CURSOR.md. Uzmi folder grok-v2/ i spoji u Hub.
 
-1. Alarmi se više ne smiju preskakati na Androidu (engine.ts + audio.ts + sw.js).
-2. Preuzmi iz stare Pilurice: izvoz.html + store.ts ingestOldExport.
-3. Ne brisati IndexedDB. Ne brisati izvoz.html.
-4. Landing /pilurica/ već otvara program — ne vraćati „MOLIMO OTVORITI“.
-5. Naziv SAMO Pilurica. Ne iframeaj Grok. Ne crtaj novi UI u WordPressu.
+1. Alarmi se ne smiju preskakati (engine.ts + audio.ts + sw.js).
+2. Lijekovi = katalog. Osobe = dodjela, svaka ima svoj broj komada.
+3. Obavijest 3 dana prije nestanka. Slike iz galerije. Bez gramaže.
+4. JSON uvoz nosi slike, zalihu, satnice. Izbaci Ja ako nije u JSON-u.
+5. Najava verzije odmah na početku.
+6. Ne brisati IndexedDB. Ne brisati izvoz.html.
+7. Naziv SAMO Pilurica. Ne iframeaj Grok.
 
 Publish now u wp-content/plugins/pilurica/app/
