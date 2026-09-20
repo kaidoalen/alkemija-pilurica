@@ -1,4 +1,4 @@
-export const APP_VERSION = "2.0";
+export const APP_VERSION = "2.1";
 export const VERSION_SEEN_KEY = "pilurica-seen-version";
 export const LAST_REFRESH_KEY = "pilurica-last-refresh";
 export const REFRESH_EVERY_MS = 15 * 24 * 60 * 60 * 1000;
