@@ -8,8 +8,10 @@ import {
   WEEKDAYS,
   type Med,
   type MedColor,
+  type MedPhoto,
   type Person,
 } from "@/lib/pirulica/types";
+import { photosOf } from "@/lib/pirulica/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,7 +54,9 @@ export function MedForm({
   );
   const [perDose, setPerDose] = useState(String(initial?.tabletsPerDose ?? 1));
   const [expiry, setExpiry] = useState(initial?.expiry ?? "");
-  const [photo, setPhoto] = useState<string | null>(initial?.photo ?? null);
+  const [photos, setPhotos] = useState<MedPhoto[]>(() =>
+    photosOf(initial ?? { photo: null, photos: [] }),
+  );
   const [scanState, setScanState] = useState<"idle" | "busy" | "ok" | "err">("idle");
   const [scanMsg, setScanMsg] = useState("");
 
@@ -81,12 +85,26 @@ export function MedForm({
 
   async function onPhoto(file: File | undefined) {
     if (!file) return;
+    const first = photos.length === 0;
     setScanState("busy");
-    setScanMsg("Čitam kutiju…");
+    setScanMsg(first ? "Čitam kutiju…" : "Dodajem sliku…");
     try {
       const dataUrl = await compressImage(file);
       const thumb = await thumbImage(dataUrl);
-      setPhoto(thumb);
+      setPhotos((cur) => [
+        ...cur,
+        {
+          id: nid(),
+          kind: cur.length === 0 ? "box" : cur.length === 1 ? "blister" : "tablet",
+          slot: cur.length,
+          src: thumb,
+        },
+      ]);
+      if (!first) {
+        setScanState("ok");
+        setScanMsg("Slika je dodana.");
+        return;
+      }
       const result = await readBoxLabel({ data: { image: dataUrl } });
       if (result.ok) {
         if (result.box.name) setName(result.box.name);
@@ -124,7 +142,8 @@ export function MedForm({
       packSize: packN != null && Number.isFinite(packN) ? packN : null,
       tabletsPerDose: Math.max(1, Number(perDose) || 1),
       expiry: expiry || null,
-      photo,
+      photo: photos[0]?.src ?? null,
+      photos,
     });
   }
 
@@ -155,33 +174,50 @@ export function MedForm({
           onChange={(e) => void onPhoto(e.target.files?.[0])}
         />
 
+        {photos.length ? (
+          <div className="flex gap-2 overflow-x-auto">
+            {photos.map((p) => (
+              <div key={p.id} className="relative shrink-0">
+                <img
+                  src={p.src}
+                  alt=""
+                  className="size-20 rounded-[14px] object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => setPhotos((cur) => cur.filter((x) => x.id !== p.id))}
+                  className="absolute -right-1 -top-1 grid size-7 place-items-center rounded-full bg-ink text-surface"
+                  aria-label="Ukloni sliku"
+                >
+                  <X className="size-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
           disabled={scanState === "busy"}
           className="flex w-full items-center gap-3 rounded-[20px] bg-surface px-4 py-3 text-left shadow-[var(--shadow-card)]"
         >
-          {photo ? (
-            <img
-              src={photo}
-              alt=""
-              className="size-12 rounded-[12px] object-cover"
-            />
-          ) : (
-            <span className="grid size-12 place-items-center rounded-[12px] bg-cream text-pine">
-              {scanState === "busy" ? (
-                <Loader2 className="size-5 animate-spin" />
-              ) : (
-                <Camera className="size-5" />
-              )}
-            </span>
-          )}
+          <span className="grid size-12 place-items-center rounded-[12px] bg-cream text-pine">
+            {scanState === "busy" ? (
+              <Loader2 className="size-5 animate-spin" />
+            ) : (
+              <Camera className="size-5" />
+            )}
+          </span>
           <span className="min-w-0">
             <span className="block text-sm font-medium text-ink">
-              Fotografiraj prednju stranu kutije
+              {photos.length ? "Dodaj još sliku lijeka" : "Fotografiraj prednju stranu kutije"}
             </span>
             <span className="mt-0.5 block text-xs text-muted text-pretty">
-              {scanMsg || "Program predloži naziv i gramažu."}
+              {scanMsg ||
+                (photos.length
+                  ? "Kutija, blister, tableta — sve vezane slike."
+                  : "Program predloži naziv i gramažu.")}
             </span>
           </span>
         </button>

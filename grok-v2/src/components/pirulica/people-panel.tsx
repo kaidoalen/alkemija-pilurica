@@ -5,6 +5,7 @@ import {
   assignMedToPerson,
   catalogMeds,
   medKey,
+  photosOf,
   removePerson,
   setCurrentPerson,
   type Snapshot,
@@ -14,7 +15,7 @@ import {
 import type { Med } from "@/lib/pirulica/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { colorDot } from "./capsule";
+import { PhotoStrip } from "./photo-strip";
 
 export function PeoplePanel({
   snap,
@@ -114,17 +115,7 @@ export function PeoplePanel({
                           onClick={() => onEditMed(med)}
                           className="flex min-w-0 flex-1 items-center gap-2 text-left"
                         >
-                          {med.photo ? (
-                            <img
-                              src={med.photo}
-                              alt=""
-                              className="size-8 shrink-0 rounded-[8px] object-cover"
-                            />
-                          ) : (
-                            <span
-                              className={`size-2 shrink-0 rounded-full ${colorDot[med.color]}`}
-                            />
-                          )}
+                          <PhotoStrip photos={photosOf(med)} color={med.color} size="sm" />
                           <span className="min-w-0">
                             <span className="block truncate text-sm text-ink">{med.name}</span>
                             <span className="block truncate text-xs text-muted">
@@ -177,17 +168,7 @@ export function PeoplePanel({
                           }}
                           className="flex w-full items-center gap-2 rounded-[14px] px-2 py-2 text-left"
                         >
-                          {med.photo ? (
-                            <img
-                              src={med.photo}
-                              alt=""
-                              className="size-8 shrink-0 rounded-[8px] object-cover"
-                            />
-                          ) : (
-                            <span
-                              className={`size-2 shrink-0 rounded-full ${colorDot[med.color]}`}
-                            />
-                          )}
+                          <PhotoStrip photos={photosOf(med)} color={med.color} size="sm" />
                           <span className="min-w-0">
                             <span className="block truncate text-sm text-ink">{med.name}</span>
                             <span className="block truncate text-xs text-muted">

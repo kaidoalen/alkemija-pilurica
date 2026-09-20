@@ -19,6 +19,15 @@ export type Person = {
   createdAt: number;
 };
 
+export type MedPhotoKind = "box" | "blister" | "tablet" | "other";
+
+export type MedPhoto = {
+  id: string;
+  kind: MedPhotoKind;
+  slot: number;
+  src: string;
+};
+
 export type Med = {
   id: string;
   personId: string;
@@ -36,6 +45,7 @@ export type Med = {
   packSize: number | null;
   expiry: string | null;
   photo: string | null;
+  photos: MedPhoto[];
 };
 
 export type DoseStatus = "pending" | "ringing" | "taken" | "snoozed" | "missed";

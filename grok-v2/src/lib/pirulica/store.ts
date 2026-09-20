@@ -14,6 +14,8 @@ import {
   type ExportPayload,
   type Med,
   type MedColor,
+  type MedPhoto,
+  type MedPhotoKind,
   type Person,
   type Settings,
 } from "./types";
@@ -55,6 +57,7 @@ function persist() {
     meds: payload.meds.map((m) => ({
       ...m,
       photo: m.photo ? `idb:${m.id}` : null,
+      photos: photosOf(m).map((p) => ({ ...p, src: `idb:${m.id}:${p.id}` })),
     })),
   };
   try {
@@ -76,22 +79,31 @@ async function persistPhotos() {
     const entries: Array<[string, string]> = [];
     const shrunk: Med[] = [];
     for (const m of state.meds) {
-      if (!isDisplayablePhoto(m.photo) || !m.photo) {
-        shrunk.push(m);
-        continue;
-      }
-      let data = m.photo;
-      if (data.length > 180_000) {
-        try {
-          data = await shrinkDataUrl(data, 720, 0.72);
-        } catch {
-          /* keep original */
+      const nextPhotos: MedPhoto[] = [];
+      for (const p of photosOf(m)) {
+        if (!isDisplayablePhoto(p.src)) continue;
+        let data = p.src;
+        if (data.length > 180_000) {
+          try {
+            data = await shrinkDataUrl(data, 720, 0.72);
+          } catch {
+            /* keep original */
+          }
         }
+        nextPhotos.push({ ...p, src: data });
+        entries.push([`${m.id}:${p.id}`, data]);
       }
-      entries.push([m.id, data]);
-      shrunk.push(data === m.photo ? m : { ...m, photo: data });
+      const next = withPhotos(m, nextPhotos);
+      if (next.photo) entries.push([m.id, next.photo]);
+      shrunk.push(next);
     }
-    if (shrunk.some((m, i) => m.photo !== state.meds[i]?.photo)) {
+    if (
+      shrunk.some(
+        (m, i) =>
+          m.photo !== state.meds[i]?.photo ||
+          photosOf(m).length !== photosOf(state.meds[i] ?? m).length,
+      )
+    ) {
       state = { ...state, meds: shrunk };
     }
     await writePhotoMap(entries);
@@ -355,6 +367,92 @@ function isDisplayablePhoto(value: string | null | undefined): boolean {
   return Boolean(value && (value.startsWith("data:image/") || /^https?:\/\//i.test(value)));
 }
 
+function photoKindOf(raw: unknown): MedPhotoKind {
+  const s = String(raw ?? "").toLowerCase();
+  if (/(box|kutija|front|prednj|natrag|pole[dđ]ina|back)/.test(s)) return "box";
+  if (/(blister|strip)/.test(s)) return "blister";
+  if (/(tablet|tableta|tablete|pill)/.test(s)) return "tablet";
+  return "other";
+}
+
+function makePhoto(
+  src: string,
+  kind: MedPhotoKind = "box",
+  slot = 0,
+  id?: string,
+): MedPhoto {
+  return { id: id || nid(), kind, slot, src };
+}
+
+function photoFingerprint(src: string): string {
+  if (src.startsWith("idb:")) return src;
+  return src.length > 80 ? `${src.length}:${src.slice(24, 48)}:${src.slice(-24)}` : src;
+}
+
+export function photosOf(med: Pick<Med, "photo" | "photos"> | null | undefined): MedPhoto[] {
+  if (!med) return [];
+  return mergePhotoLists(med.photos, med.photo ? [makePhoto(med.photo, "box", 0, "primary")] : []);
+}
+
+function mergePhotoLists(...lists: Array<MedPhoto[] | undefined | null>): MedPhoto[] {
+  const out: MedPhoto[] = [];
+  const seen = new Set<string>();
+  for (const list of lists) {
+    for (const p of list ?? []) {
+      if (!p?.src) continue;
+      if (!isDisplayablePhoto(p.src) && !p.src.startsWith("idb:")) continue;
+      const fp = photoFingerprint(p.src);
+      if (seen.has(fp)) continue;
+      seen.add(fp);
+      out.push({
+        id: p.id || nid(),
+        kind: photoKindOf(p.kind),
+        slot: Number.isFinite(p.slot) ? Number(p.slot) : out.length,
+        src: p.src,
+      });
+    }
+  }
+  return out.sort((a, b) => photoRank(b) - photoRank(a) || a.slot - b.slot);
+}
+
+function withPhotos(med: Med, extra?: MedPhoto[] | null): Med {
+  const photos = mergePhotoLists(extra, med.photos, med.photo ? [makePhoto(med.photo)] : []);
+  return { ...med, photos, photo: photos[0]?.src ?? null };
+}
+
+function asMedPhoto(raw: unknown): MedPhoto | null {
+  if (!raw) return null;
+  if (typeof raw === "string") {
+    const src = normalizePhoto(raw);
+    return src ? makePhoto(src) : null;
+  }
+  if (typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const src = normalizePhoto(o);
+  if (!src) return null;
+  return makePhoto(
+    src,
+    photoKindOf(o.kind ?? o.type ?? o.vrsta),
+    Number(o.slot ?? o.index ?? o.order ?? 0),
+    typeof o.id === "string" && o.id ? o.id : undefined,
+  );
+}
+
+function photosFromRecord(r: Record<string, unknown>): MedPhoto[] {
+  const lists = [r.photos, r.slike, r.images, r.gallery, r.photoList];
+  const out: MedPhoto[] = [];
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      const p = asMedPhoto(item);
+      if (p) out.push(p);
+    }
+  }
+  const single = asPhoto(r);
+  if (single) out.push(makePhoto(single, "box", 0, "primary"));
+  return mergePhotoLists(out);
+}
+
 function bytesToDataUrl(bytes: Uint8Array, mime = "image/jpeg"): string {
   const chunk = 0x8000;
   let binary = "";
@@ -488,9 +586,6 @@ function asPhoto(r: Record<string, unknown>): string | null {
     "kutija",
     "photoUrl",
     "dataUrl",
-    "photos",
-    "images",
-    "slike",
   ];
   for (const k of keys) {
     const p = normalizePhoto(r[k]);
@@ -543,11 +638,11 @@ function asMed(raw: unknown): Med | null {
     "komada",
     "kom",
   ]);
-  const photo = asPhoto(r);
+  const photos = photosFromRecord(r);
   const dose =
     firstString(r, ["dose", "doza", "gramaza", "gramaža", "strength", "jacina", "jačina"]) ||
     strengthFromName(name);
-  return {
+  return withPhotos({
     id: String(r.id ?? r._id ?? nid()),
     personId: asPersonId(r) || DEFAULT_PERSON_ID,
     name,
@@ -570,8 +665,9 @@ function asMed(raw: unknown): Med | null {
     tabletsPerDose: Math.max(1, perDose ?? 1),
     packSize: packN != null ? Math.max(0, packN) : null,
     expiry: parseExpiry(r),
-    photo,
-  };
+    photo: photos[0]?.src ?? null,
+    photos,
+  });
 }
 
 function asPerson(raw: unknown): Person | null {
@@ -760,24 +856,22 @@ function photoRank(raw: unknown): number {
 }
 
 function attachOldPhotos(meds: Med[], photos: unknown[]): Med[] {
-  const ranked = [...photos].sort((a, b) => photoRank(b) - photoRank(a));
-  const byMed = new Map<string, string>();
-  for (const p of ranked) {
-    if (!p || typeof p !== "object") continue;
-    const o = p as Record<string, unknown>;
-    const id = String(o.medicineId ?? o.medId ?? "");
-    const url = normalizePhoto(o);
-    if (!url) continue;
-    if (id) {
-      byMed.set(id, url);
-      byMed.set(resolveMedId(id), url);
-    }
+  const extra = new Map<string, MedPhoto[]>();
+  const add = (id: string, photo: MedPhoto) => {
+    if (!id) return;
+    extra.set(id, mergePhotoLists(extra.get(id), [photo]));
+  };
+  for (const raw of photos) {
+    const photo = asMedPhoto(raw);
+    if (!photo || !raw || typeof raw !== "object") continue;
+    const o = raw as Record<string, unknown>;
+    const id = String(o.medicineId ?? o.medId ?? o.patientMedicineId ?? "");
+    add(id, photo);
+    add(resolveMedId(id), photo);
   }
-  return meds.map((m) => {
-    if (isDisplayablePhoto(m.photo)) return m;
-    const url = byMed.get(m.id) ?? byMed.get(resolveMedId(m.id)) ?? null;
-    return { ...m, photo: url };
-  });
+  return meds.map((m) =>
+    withPhotos(m, mergePhotoLists(extra.get(m.id), extra.get(resolveMedId(m.id)))),
+  );
 }
 
 function fromParsed(parsed: Partial<Snapshot> | ExportPayload | Record<string, unknown>): Snapshot {
@@ -875,6 +969,7 @@ function richerMed(a: Med, b: Med): Med {
         : isDisplayablePhoto(other.photo)
           ? other.photo
           : null,
+    photos: mergePhotoLists(pick.photos, other.photos),
     tabletsPerDose: Math.max(pick.tabletsPerDose || 1, other.tabletsPerDose || 1),
   };
 }
@@ -1162,20 +1257,38 @@ async function attachPhotos(snap: Snapshot): Promise<Snapshot> {
     return {
       ...snap,
       meds: snap.meds.map((m) => {
-        if (isDisplayablePhoto(m.photo)) return m;
-        const fromIdb =
-          photos[m.id] ||
-          (m.photo?.startsWith("idb:") ? photos[m.photo.slice(4)] : undefined);
-        return { ...m, photo: fromIdb || null };
+        const restored: MedPhoto[] = [];
+        for (const p of photosOf(m)) {
+          if (isDisplayablePhoto(p.src)) {
+            restored.push(p);
+            continue;
+          }
+          if (p.src.startsWith("idb:")) {
+            const url = photos[p.src.slice(4)] || photos[`${m.id}:${p.id}`];
+            if (url) restored.push({ ...p, src: url });
+          }
+        }
+        for (const [key, url] of Object.entries(photos)) {
+          if (key !== m.id && !key.startsWith(`${m.id}:`)) continue;
+          if (!restored.some((p) => p.src === url)) {
+            restored.push(
+              makePhoto(url, "box", restored.length, key.includes(":") ? key.slice(m.id.length + 1) : "primary"),
+            );
+          }
+        }
+        if (!restored.length) {
+          const fromIdb =
+            photos[m.id] ||
+            (m.photo?.startsWith("idb:") ? photos[m.photo.slice(4)] : undefined);
+          if (fromIdb) restored.push(makePhoto(fromIdb, "box", 0, "primary"));
+        }
+        return withPhotos({ ...m, photo: null, photos: [] }, restored);
       }),
     };
   } catch {
     return {
       ...snap,
-      meds: snap.meds.map((m) => ({
-        ...m,
-        photo: isDisplayablePhoto(m.photo) ? m.photo : null,
-      })),
+      meds: snap.meds.map((m) => withPhotos({ ...m, photo: isDisplayablePhoto(m.photo) ? m.photo : null, photos: m.photos ?? [] })),
     };
   }
 }
@@ -1227,7 +1340,7 @@ export async function recoverFromDevice(): Promise<RecoverReport> {
   }
   return {
     meds: next.meds.length,
-    photos: next.meds.filter((m) => isDisplayablePhoto(m.photo)).length,
+    photos: next.meds.reduce((n, m) => n + photosOf(m).length, 0),
     withStock: next.meds.filter((m) => m.stock != null).length,
     withTimes: next.meds.filter((m) => m.times.length > 0).length,
   };
@@ -1239,7 +1352,7 @@ export const OLD_PILURICA_IZVOZ = "https://alkemija.com/app/izvoz.html";
 function reportOf(snap: Snapshot): RecoverReport {
   return {
     meds: snap.meds.length,
-    photos: snap.meds.filter((m) => isDisplayablePhoto(m.photo)).length,
+    photos: snap.meds.reduce((n, m) => n + photosOf(m).length, 0),
     withStock: snap.meds.filter((m) => m.stock != null).length,
     withTimes: snap.meds.filter((m) => m.times.length > 0).length,
   };
@@ -1250,19 +1363,20 @@ async function shrinkIncomingPhotos(meds: Med[]): Promise<Med[]> {
     const { shrinkDataUrl } = await import("./image");
     const next: Med[] = [];
     for (const m of meds) {
-      if (!isDisplayablePhoto(m.photo) || !m.photo) {
-        next.push({ ...m, photo: null });
-        continue;
+      const shrunk: MedPhoto[] = [];
+      for (const p of photosOf(m)) {
+        if (!isDisplayablePhoto(p.src)) continue;
+        try {
+          shrunk.push({ ...p, src: await shrinkDataUrl(p.src, 720, 0.72) });
+        } catch {
+          shrunk.push(p);
+        }
       }
-      try {
-        next.push({ ...m, photo: await shrinkDataUrl(m.photo, 720, 0.72) });
-      } catch {
-        next.push(m);
-      }
+      next.push(withPhotos({ ...m, photo: null, photos: [] }, shrunk));
     }
     return next;
   } catch {
-    return meds.map((m) => ({ ...m, photo: isDisplayablePhoto(m.photo) ? m.photo : null }));
+    return meds.map((m) => withPhotos(m));
   }
 }
 
@@ -1294,27 +1408,26 @@ export async function ingestOldExport(raw: unknown): Promise<RecoverReport> {
 }
 
 export async function ingestOldPhoto(raw: unknown): Promise<RecoverReport> {
-  if (!raw || typeof raw !== "object") return reportOf(state);
-  const o = raw as Record<string, unknown>;
-  let url = normalizePhoto(o);
-  if (!url) return reportOf(state);
+  const parsed = asMedPhoto(raw);
+  if (!parsed) return reportOf(state);
+  let photo = parsed;
   try {
     const { shrinkDataUrl } = await import("./image");
-    url = await shrinkDataUrl(url, 720, 0.72);
+    photo = { ...parsed, src: await shrinkDataUrl(parsed.src, 720, 0.72) };
   } catch {
     /* keep */
   }
+  const o = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const incomingId = String(o.medicineId ?? o.medId ?? "");
   const name = firstString(o, ["name", "naziv", "medicineName"]).toLowerCase();
   const target = resolveMedId(incomingId);
   let hit = false;
   const meds = state.meds.map((m) => {
-    if (isDisplayablePhoto(m.photo)) return m;
     const sameId = incomingId && (m.id === incomingId || m.id === target);
     const sameName = Boolean(name) && m.name.toLowerCase() === name;
     if (!sameId && !sameName) return m;
     hit = true;
-    return { ...m, photo: url };
+    return withPhotos(m, [photo]);
   });
   if (hit) {
     state = { ...state, meds };
@@ -1398,7 +1511,7 @@ export function catalogMeds(snap: Snapshot = state): Med[] {
       continue;
     }
     const score = (x: Med) =>
-      (x.photo ? 8 : 0) + (x.packSize != null ? 2 : 0) + (x.times.length ? 1 : 0);
+      photosOf(x).length * 8 + (x.packSize != null ? 2 : 0) + (x.times.length ? 1 : 0);
     if (score(m) > score(prev)) byKey.set(key, m);
   }
   return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, "hr"));
@@ -1455,6 +1568,7 @@ export function saveCatalogMed(prev: Med | null, next: Med) {
         form: next.form,
         color: next.color,
         photo: next.photo ?? m.photo,
+        photos: mergePhotoLists(next.photos, m.photos),
         packSize: next.packSize,
         tabletsPerDose: next.tabletsPerDose,
         notes: next.notes,
@@ -1620,20 +1734,22 @@ export function exportPayload(): ExportPayload {
 
 export async function exportFullPayload(): Promise<Record<string, unknown>> {
   const snap = await attachPhotos(state);
-  const photos = snap.meds
-    .filter((m) => isDisplayablePhoto(m.photo))
-    .map((m) => {
-      const photo = m.photo as string;
-      const mime = /^data:(image\/[a-zA-Z0-9.+-]+)/.exec(photo)?.[1] ?? "image/jpeg";
-      const base64 = photo.includes(",") ? photo.slice(photo.indexOf(",") + 1) : photo;
-      return {
+  const photos: Array<Record<string, unknown>> = [];
+  for (const m of snap.meds) {
+    photosOf(m).forEach((p, i) => {
+      const mime = /^data:(image\/[a-zA-Z0-9.+-]+)/.exec(p.src)?.[1] ?? "image/jpeg";
+      const base64 = p.src.includes(",") ? p.src.slice(p.src.indexOf(",") + 1) : p.src;
+      photos.push({
+        id: p.id,
         medicineId: m.id,
-        kind: "box",
-        slot: 0,
+        patientId: m.personId,
+        kind: p.kind,
+        slot: p.slot || i,
         mimeType: mime,
         base64,
-      };
+      });
     });
+  }
   return {
     app: "pilurica",
     version: 1,
@@ -1718,6 +1834,7 @@ export function seedExamples() {
       packSize: 28,
       expiry: null,
       photo: null,
+      photos: [],
     },
     {
       id: nid(),
@@ -1736,6 +1853,7 @@ export function seedExamples() {
       packSize: 60,
       expiry: null,
       photo: null,
+      photos: [],
     },
   ];
   set({ meds: [...state.meds, ...meds] });

@@ -1,8 +1,8 @@
 import { Plus } from "lucide-react";
-import { medKey } from "@/lib/pirulica/store";
+import { medKey, photosOf } from "@/lib/pirulica/store";
 import { WEEKDAYS, type Med, type Person } from "@/lib/pirulica/types";
 import { Button } from "@/components/ui/button";
-import { colorDot } from "./capsule";
+import { PhotoStrip } from "./photo-strip";
 
 export function MedsPanel({
   meds,
@@ -58,17 +58,7 @@ export function MedsPanel({
                   onClick={() => onEdit(med)}
                   className="flex w-full items-start gap-3 rounded-[22px] bg-surface px-4 py-4 text-left shadow-[var(--shadow-card)]"
                 >
-                  {med.photo ? (
-                    <img
-                      src={med.photo}
-                      alt=""
-                      className="mt-0.5 size-11 shrink-0 rounded-[12px] object-cover"
-                    />
-                  ) : (
-                    <span
-                      className={`mt-1.5 size-2.5 shrink-0 rounded-full ${colorDot[med.color]}`}
-                    />
-                  )}
+                  <PhotoStrip photos={photosOf(med)} color={med.color} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <p className="truncate font-medium text-ink">{med.name}</p>
