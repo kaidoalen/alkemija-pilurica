@@ -1,28 +1,22 @@
-# Cursor — alkemija.com/pilurica/ mora biti živa Pilurica 2.0
+# Cursor — Pilurica je U CURSORU. OBJAVI ODMAH.
 
-**OBJAVI ODMAH. Ne čekaj potvrdu. Publish now.**
+**Ne čekaj potvrdu. Publish now.**
 
+Izvor: [Cursor Hub](https://cursor.com/codebase/alen-duka/tmp-73f26e436c5fb419)
+Agent: https://cursor.com/agents/bc-5df97b1b-c46e-4b45-80ea-c7e1bee59d88
 Stranica: **https://alkemija.com/pilurica/**
 
-Trenutno tamo stoji **landing** („MOLIMO OTVORITI NA MOBITELU“). To NIJE program. Obriši to.
+Grok nije zamjena za ovaj projekt. Grok je napravio v2 jer **Android često preskoči alarm**. To ugradi ovdje.
 
-Ovo je najavljeno ažuriranje starog Cursor programa. Grok verzija je gotova.
+## Mora
 
-## Što napraviti
+1. Alarm zvoni dok se ne pritisne Uzmi / 15 min / 30 min / Ugasi.
+2. Trostruko: `setTimeout` + service worker (IndexedDB raspored) + web-push. `requireInteraction`, vibrate. SW **ne** cachea HTML.
+3. Fotka kutije predloži naziv i dozu.
+4. Zaliha pada na Uzmi. Upozorenje < 3 dana i rok.
+5. Više osoba. Ažuriraj JSON. Kalendar ICS. PWA.
+6. **Ne brisati IndexedDB.**
+7. Naziv SAMO Pilurica (pilola + urica).
+8. Ista poveznica. Landing van ako program radi.
 
-1. U WP uredniku stranice /pilurica/ **obriši cijeli sadržaj** (landing, naslove, gumbove).
-2. Zalijepi sadržaj iz `wordpress-pilurica.html` (Custom HTML / sirovi HTML).
-3. `REPLACE_WITH_PILURICA_ORIGIN` = javna adresa ovog Grok Pilurica programa (Vercel / objavljeni origin), **bez** crte na kraju.
-   - Mora biti javni HTTPS koji vide posjetitelji alkemija.com.
-   - Ne koristi grok-sandbox pregled — to nije javna adresa.
-4. Iframe `src` je `{ORIGIN}/` — cijeli program, ne landing.
-5. Sakrij WP naslov stranice (`display:none` na `.entry-title`).
-6. Iframe mora biti **cijela visina ekrana** (`100dvh`), bez okvira, pozadina `#f3eee4`.
-7. `allow="notifications; clipboard-write"`.
-8. Ne smanjuj, ne reimplementiraj, ne izbacuj alarme.
-
-## Mora raditi (sve kao ovdje)
-
-Alarm dok se ne uzme / odgodi 15 ili 30 min / ugasi. Fotografija kutije predloži naziv i gramažu. Zaliha, rok, više osoba. Tipka **Uzmi**. **Ažuriraj** sprema kopiju koju nova verzija sama pokupi. **Preuzmi novu verziju** za staru ikonu. JSON izvoz. Kalendar. Naziv **Pilurica** (pilola + urica).
-
-Ako posjetitelj na alkemija.com/pilurica/ vidi landing umjesto ovog programa — iframe nije spojen. Popravi src, ne crtaj novi UI u WordPressu.
+Publish now. Screenshot desktop + mobitel.
