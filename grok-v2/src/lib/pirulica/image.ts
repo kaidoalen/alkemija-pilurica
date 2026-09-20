@@ -14,6 +14,16 @@ export async function compressImage(file: File, maxEdge = 960, quality = 0.72): 
 }
 
 export async function thumbImage(dataUrl: string, maxEdge = 320, quality = 0.58): Promise<string> {
+  return shrinkDataUrl(dataUrl, maxEdge, quality);
+}
+
+export async function shrinkDataUrl(
+  dataUrl: string,
+  maxEdge = 720,
+  quality = 0.72,
+): Promise<string> {
+  if (!dataUrl.startsWith("data:image/")) return dataUrl;
+  if (dataUrl.length < 60_000 && maxEdge >= 720) return dataUrl;
   const img = await loadImage(dataUrl);
   const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
   const canvas = document.createElement("canvas");

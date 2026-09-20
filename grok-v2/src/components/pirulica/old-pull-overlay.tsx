@@ -29,6 +29,12 @@ export function OldPullOverlay({
         setError("U toj kopiji nema lijekova. Izvezite JSON iz Postavki stare Pilurice.");
         return;
       }
+      if (!report.photos) {
+        setError(
+          "Lijekovi su stigli, slike nisu. U staroj Pilurici stisni Izvezi JSON kopiju, pa ovdje odaberi tu datoteku.",
+        );
+        return;
+      }
       onDone(report, "file");
     } catch {
       setError("Datoteka nije valjani JSON iz stare Pilurice.");
@@ -63,8 +69,8 @@ export function OldPullOverlay({
           <li className="rounded-[18px] bg-surface px-4 py-3 shadow-[var(--shadow-card)]">
             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-faint">1</p>
             <p className="mt-1 text-pretty">
-              U novom tabu čitam staru bazu. Ako lijekovi ne dođu sami, tamo stisni{" "}
-              <strong>Izvezi JSON kopiju</strong>.
+              U novom tabu čitam staru bazu sa slikama kutija. Ako ne dođu same, tamo stisni{" "}
+              <strong>Pošalji</strong> ili <strong>Izvezi JSON kopiju</strong>.
             </p>
           </li>
           <li className="rounded-[18px] bg-surface px-4 py-3 shadow-[var(--shadow-card)]">

@@ -71,22 +71,28 @@ export async function readSchedule(): Promise<SwSchedule | null> {
 
 export async function writePhotoMap(entries: Array<[string, string]>) {
   if (typeof indexedDB === "undefined") return;
+  for (const [id, data] of entries) {
+    await writePhoto(id, data);
+  }
+}
+
+export async function writePhoto(id: string, data: string) {
+  if (typeof indexedDB === "undefined") return;
+  if (!data.startsWith("data:image/")) return;
   try {
     const db = await openDb();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(IDB_STORE, "readwrite");
-      const store = tx.objectStore(IDB_STORE);
-      for (const [id, data] of entries) {
-        store.put(data, `photo:${id}`);
-      }
+      tx.objectStore(IDB_STORE).put(data, `photo:${id}`);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
     db.close();
   } catch {
-    /* quota */
+    /* quota — keep the in-memory data URL */
   }
 }
+
 
 export async function readPhotoMap(): Promise<Record<string, string>> {
   const out: Record<string, string> = {};

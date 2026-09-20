@@ -164,8 +164,12 @@ export function SettingsPanel({
     try {
       const text = await file.text();
       const parsed: unknown = JSON.parse(text);
-      const result = importPayload(parsed);
-      setNote(result.ok ? "Kopija je uvezena." : result.error);
+      const result = await importPayload(parsed);
+      setNote(
+        result.ok
+          ? "Kopija je uvezena — lijekovi i slike kutija."
+          : result.error,
+      );
     } catch {
       setNote("Datoteka nije valjani JSON.");
     }

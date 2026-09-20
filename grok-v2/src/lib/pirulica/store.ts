@@ -71,11 +71,29 @@ function persist() {
 async function persistPhotos() {
   try {
     const { writePhotoMap } = await import("./idb");
-    await writePhotoMap(
-      state.meds
-        .filter((m) => typeof m.photo === "string" && m.photo.startsWith("data:image/"))
-        .map((m) => [m.id, m.photo as string]),
-    );
+    const { shrinkDataUrl } = await import("./image");
+    const entries: Array<[string, string]> = [];
+    const shrunk: Med[] = [];
+    for (const m of state.meds) {
+      if (!isDisplayablePhoto(m.photo) || !m.photo) {
+        shrunk.push(m);
+        continue;
+      }
+      let data = m.photo;
+      if (data.length > 180_000) {
+        try {
+          data = await shrinkDataUrl(data, 720, 0.72);
+        } catch {
+          /* keep original */
+        }
+      }
+      entries.push([m.id, data]);
+      shrunk.push(data === m.photo ? m : { ...m, photo: data });
+    }
+    if (shrunk.some((m, i) => m.photo !== state.meds[i]?.photo)) {
+      state = { ...state, meds: shrunk };
+    }
+    await writePhotoMap(entries);
   } catch {
     /* ignore */
   }
@@ -332,6 +350,19 @@ function parseExpiry(r: Record<string, unknown>): string | null {
   return null;
 }
 
+function isDisplayablePhoto(value: string | null | undefined): boolean {
+  return Boolean(value && (value.startsWith("data:image/") || /^https?:\/\//i.test(value)));
+}
+
+function bytesToDataUrl(bytes: Uint8Array, mime = "image/jpeg"): string {
+  const chunk = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return `data:${mime};base64,${btoa(binary)}`;
+}
+
 function normalizePhoto(value: unknown, mime = "image/jpeg"): string | null {
   if (!value) return null;
   if (Array.isArray(value)) {
@@ -341,6 +372,12 @@ function normalizePhoto(value: unknown, mime = "image/jpeg"): string | null {
     }
     return null;
   }
+  if (typeof ArrayBuffer !== "undefined" && value instanceof ArrayBuffer) {
+    return bytesToDataUrl(new Uint8Array(value), mime);
+  }
+  if (typeof Uint8Array !== "undefined" && value instanceof Uint8Array) {
+    return bytesToDataUrl(value, mime);
+  }
   if (typeof value === "object") {
     const o = value as Record<string, unknown>;
     const nextMime =
@@ -349,19 +386,22 @@ function normalizePhoto(value: unknown, mime = "image/jpeg"): string | null {
         : typeof o.type === "string" && o.type.startsWith("image/")
           ? o.type
           : mime;
-    if (o.blob instanceof Blob) return null;
+    if (typeof Blob !== "undefined" && o.blob instanceof Blob) {
+      return null;
+    }
     return normalizePhoto(
-      o.data ?? o.src ?? o.url ?? o.base64 ?? o.photo ?? o.image,
+      o.data ?? o.src ?? o.url ?? o.base64 ?? o.photo ?? o.image ?? o.dataUrl,
       nextMime,
     );
   }
   if (typeof value !== "string") return null;
   const s = value.trim();
-  if (s.startsWith("idb:")) return s;
+  if (!s || s.startsWith("idb:")) return null;
   if (s.startsWith("data:image/")) return s;
   if (/^https?:\/\//i.test(s) && s.length < 4000) return s;
-  if (s.length > 80 && /^[A-Za-z0-9+/=\s]+$/.test(s.slice(0, 100))) {
-    const body = s.includes(",") ? s.slice(s.indexOf(",") + 1) : s;
+  const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
+  const body = b64.includes(",") ? b64.slice(b64.indexOf(",") + 1) : b64;
+  if (body.length > 24 && /^[A-Za-z0-9+/=\s]+$/.test(body.slice(0, 120))) {
     return `data:${mime};base64,${body.replace(/\s/g, "")}`;
   }
   return null;
@@ -556,6 +596,12 @@ function asLog(raw: unknown): DoseLog | null {
   };
 }
 
+const legacyMedIds = new Map<string, string>();
+
+function resolveMedId(id: string): string {
+  return legacyMedIds.get(id) ?? id;
+}
+
 function photoRank(raw: unknown): number {
   if (!raw || typeof raw !== "object") return 0;
   const o = raw as Record<string, unknown>;
@@ -574,11 +620,18 @@ function attachOldPhotos(meds: Med[], photos: unknown[]): Med[] {
     if (!p || typeof p !== "object") continue;
     const o = p as Record<string, unknown>;
     const id = String(o.medicineId ?? o.medId ?? "");
-    if (!id || byMed.has(id)) continue;
     const url = normalizePhoto(o);
-    if (url) byMed.set(id, url);
+    if (!url) continue;
+    if (id) {
+      byMed.set(id, url);
+      byMed.set(resolveMedId(id), url);
+    }
   }
-  return meds.map((m) => (m.photo ? m : { ...m, photo: byMed.get(m.id) ?? null }));
+  return meds.map((m) => {
+    if (isDisplayablePhoto(m.photo)) return m;
+    const url = byMed.get(m.id) ?? byMed.get(resolveMedId(m.id)) ?? null;
+    return { ...m, photo: url };
+  });
 }
 
 function fromParsed(parsed: Partial<Snapshot> | ExportPayload | Record<string, unknown>): Snapshot {
@@ -676,11 +729,11 @@ function richerMed(a: Med, b: Med): Med {
     packSize: pick.packSize ?? other.packSize,
     expiry: pick.expiry || other.expiry,
     photo:
-      pick.photo && !pick.photo.startsWith("idb:")
+      isDisplayablePhoto(pick.photo)
         ? pick.photo
-        : other.photo && !other.photo.startsWith("idb:")
+        : isDisplayablePhoto(other.photo)
           ? other.photo
-          : pick.photo || other.photo,
+          : null,
     tabletsPerDose: Math.max(pick.tabletsPerDose || 1, other.tabletsPerDose || 1),
   };
 }
@@ -709,8 +762,15 @@ function mergeSnapshots(base: Snapshot, extra: Snapshot): Snapshot {
         x.id === mapped.id ||
         (x.personId === mapped.personId && x.name.toLowerCase() === mapped.name.toLowerCase()),
     );
-    if (idx >= 0) meds[idx] = richerMed(meds[idx], mapped);
-    else meds.push(mapped);
+    if (idx >= 0) {
+      const surviving = richerMed(meds[idx], mapped);
+      legacyMedIds.set(mapped.id, surviving.id);
+      legacyMedIds.set(meds[idx].id, surviving.id);
+      meds[idx] = surviving;
+    } else {
+      legacyMedIds.set(mapped.id, mapped.id);
+      meds.push(mapped);
+    }
   }
   const logs = [...base.logs];
   for (const l of extra.logs) {
@@ -868,16 +928,37 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 async function hydrateStoreValues(values: unknown[]): Promise<unknown[]> {
   const out: unknown[] = [];
   for (const value of values) {
-    if (value && typeof value === "object" && "blob" in value) {
+    if (value && typeof value === "object") {
       const rec = value as Record<string, unknown>;
-      if (rec.blob instanceof Blob) {
+      const blob = rec.blob;
+      if (typeof Blob !== "undefined" && blob instanceof Blob) {
         try {
-          const dataUrl = await blobToDataUrl(rec.blob);
-          out.push({ ...rec, base64: dataUrl, mimeType: rec.blob.type || rec.mimeType });
+          const dataUrl = await blobToDataUrl(blob);
+          out.push({ ...rec, base64: dataUrl, mimeType: rec.blob instanceof Blob ? rec.blob.type || rec.mimeType : rec.mimeType });
           continue;
         } catch {
           /* skip blob */
         }
+      }
+      if (blob instanceof ArrayBuffer) {
+        out.push({
+          ...rec,
+          base64: bytesToDataUrl(
+            new Uint8Array(blob),
+            typeof rec.mimeType === "string" ? rec.mimeType : "image/jpeg",
+          ),
+        });
+        continue;
+      }
+      if (blob instanceof Uint8Array) {
+        out.push({
+          ...rec,
+          base64: bytesToDataUrl(
+            blob,
+            typeof rec.mimeType === "string" ? rec.mimeType : "image/jpeg",
+          ),
+        });
+        continue;
       }
     }
     out.push(value);
@@ -934,9 +1015,11 @@ async function attachPhotos(snap: Snapshot): Promise<Snapshot> {
     return {
       ...snap,
       meds: snap.meds.map((m) => {
-        if (m.photo && m.photo.startsWith("data:image/")) return m;
-        const fromIdb = photos[m.id] || (m.photo?.startsWith("idb:") ? photos[m.photo.slice(4)] : undefined);
-        return { ...m, photo: fromIdb || (m.photo?.startsWith("idb:") ? null : m.photo) };
+        if (isDisplayablePhoto(m.photo)) return m;
+        const fromIdb =
+          photos[m.id] ||
+          (m.photo?.startsWith("idb:") ? photos[m.photo.slice(4)] : undefined);
+        return { ...m, photo: fromIdb || null };
       }),
     };
   } catch {
@@ -944,7 +1027,7 @@ async function attachPhotos(snap: Snapshot): Promise<Snapshot> {
       ...snap,
       meds: snap.meds.map((m) => ({
         ...m,
-        photo: m.photo?.startsWith("data:image/") || (m.photo && m.photo.startsWith("http")) ? m.photo : null,
+        photo: isDisplayablePhoto(m.photo) ? m.photo : null,
       })),
     };
   }
@@ -997,7 +1080,7 @@ export async function recoverFromDevice(): Promise<RecoverReport> {
   }
   return {
     meds: next.meds.length,
-    photos: next.meds.filter((m) => Boolean(m.photo)).length,
+    photos: next.meds.filter((m) => isDisplayablePhoto(m.photo)).length,
     withStock: next.meds.filter((m) => m.stock != null).length,
     withTimes: next.meds.filter((m) => m.times.length > 0).length,
   };
@@ -1009,18 +1092,45 @@ export const OLD_PILURICA_IZVOZ = "https://alkemija.com/app/izvoz.html";
 function reportOf(snap: Snapshot): RecoverReport {
   return {
     meds: snap.meds.length,
-    photos: snap.meds.filter((m) => Boolean(m.photo)).length,
+    photos: snap.meds.filter((m) => isDisplayablePhoto(m.photo)).length,
     withStock: snap.meds.filter((m) => m.stock != null).length,
     withTimes: snap.meds.filter((m) => m.times.length > 0).length,
   };
 }
 
-export function ingestOldExport(raw: unknown): RecoverReport {
+async function shrinkIncomingPhotos(meds: Med[]): Promise<Med[]> {
+  try {
+    const { shrinkDataUrl } = await import("./image");
+    const next: Med[] = [];
+    for (const m of meds) {
+      if (!isDisplayablePhoto(m.photo) || !m.photo) {
+        next.push({ ...m, photo: null });
+        continue;
+      }
+      try {
+        next.push({ ...m, photo: await shrinkDataUrl(m.photo, 720, 0.72) });
+      } catch {
+        next.push(m);
+      }
+    }
+    return next;
+  } catch {
+    return meds.map((m) => ({ ...m, photo: isDisplayablePhoto(m.photo) ? m.photo : null }));
+  }
+}
+
+export async function ingestOldExport(raw: unknown): Promise<RecoverReport> {
   if (!raw || typeof raw !== "object") {
     return { meds: 0, photos: 0, withStock: 0, withTimes: 0 };
   }
   const incoming = fromParsed(raw as Record<string, unknown>);
+  incoming.meds = await shrinkIncomingPhotos(incoming.meds);
   if (!incoming.meds.length && incoming.people.length <= 1) {
+    const onlyPhotos = pickArray(raw as Record<string, unknown>, ["photos", "slike", "images"]);
+    if (onlyPhotos.length) {
+      for (const p of onlyPhotos) await ingestOldPhoto(p);
+      return reportOf(state);
+    }
     return { meds: 0, photos: 0, withStock: 0, withTimes: 0 };
   }
   const base = state.hydrated ? state : { ...empty, hydrated: true };
@@ -1031,8 +1141,42 @@ export function ingestOldExport(raw: unknown): RecoverReport {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("pilurica-changed"));
   }
-  void persistPhotos();
-  return reportOf(next);
+  await persistPhotos();
+  emit();
+  return reportOf(state);
+}
+
+export async function ingestOldPhoto(raw: unknown): Promise<RecoverReport> {
+  if (!raw || typeof raw !== "object") return reportOf(state);
+  const o = raw as Record<string, unknown>;
+  let url = normalizePhoto(o);
+  if (!url) return reportOf(state);
+  try {
+    const { shrinkDataUrl } = await import("./image");
+    url = await shrinkDataUrl(url, 720, 0.72);
+  } catch {
+    /* keep */
+  }
+  const incomingId = String(o.medicineId ?? o.medId ?? "");
+  const name = firstString(o, ["name", "naziv", "medicineName"]).toLowerCase();
+  const target = resolveMedId(incomingId);
+  let hit = false;
+  const meds = state.meds.map((m) => {
+    if (isDisplayablePhoto(m.photo)) return m;
+    const sameId = incomingId && (m.id === incomingId || m.id === target);
+    const sameName = Boolean(name) && m.name.toLowerCase() === name;
+    if (!sameId && !sameName) return m;
+    hit = true;
+    return { ...m, photo: url };
+  });
+  if (hit) {
+    state = { ...state, meds };
+    persist();
+    emit();
+    await persistPhotos();
+    emit();
+  }
+  return reportOf(state);
 }
 
 export function ingestOldFile(file: File): Promise<RecoverReport> {
@@ -1044,13 +1188,32 @@ export function ingestOldFile(file: File): Promise<RecoverReport> {
 
 export function listenForOldPilurica(onReport: (report: RecoverReport) => void): () => void {
   if (typeof window === "undefined") return () => undefined;
+  let photoQueue: Promise<void> = Promise.resolve();
   const onMsg = (event: MessageEvent) => {
-    if (event.origin !== "https://alkemija.com" && event.origin !== "https://www.alkemija.com") {
+    const origin = event.origin;
+    if (
+      origin !== "https://alkemija.com" &&
+      origin !== "https://www.alkemija.com" &&
+      origin !== window.location.origin
+    ) {
       return;
     }
-    const data = event.data as { type?: string; payload?: unknown } | null;
-    if (!data || data.type !== "pilurica-stara-kopija") return;
-    onReport(ingestOldExport(data.payload));
+    const data = event.data as
+      | { type?: string; payload?: unknown; photo?: unknown; count?: number }
+      | null;
+    if (!data || typeof data !== "object") return;
+    if (data.type === "pilurica-stara-slika") {
+      photoQueue = photoQueue
+        .then(() => ingestOldPhoto(data.photo ?? data.payload))
+        .then(() => undefined);
+      return;
+    }
+    if (data.type === "pilurica-stara-gotovo") {
+      void photoQueue.then(() => onReport(reportOf(state)));
+      return;
+    }
+    if (data.type !== "pilurica-stara-kopija") return;
+    void ingestOldExport(data.payload).then(onReport);
   };
   window.addEventListener("message", onMsg);
   return () => window.removeEventListener("message", onMsg);
@@ -1219,13 +1382,14 @@ export function exportPayload(): ExportPayload {
   };
 }
 
-export function importPayload(raw: unknown): { ok: true } | { ok: false; error: string } {
+export async function importPayload(raw: unknown): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!raw || typeof raw !== "object") return { ok: false, error: "Datoteka nije prepoznata." };
   const incoming = fromParsed(raw as Record<string, unknown>);
-  if (!incoming.meds.length && incoming.people.length <= 1) {
+  const photos = pickArray(raw as Record<string, unknown>, ["photos", "slike", "images"]);
+  if (!incoming.meds.length && incoming.people.length <= 1 && !photos.length) {
     return { ok: false, error: "U kopiji nema lijekova ni osoba." };
   }
-  ingestOldExport(raw);
+  await ingestOldExport(raw);
   return { ok: true };
 }
 

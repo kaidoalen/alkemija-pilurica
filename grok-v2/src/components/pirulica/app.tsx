@@ -81,12 +81,17 @@ export function PiluricaApp() {
     })();
     const stopListen = listenForOldPilurica((r) => {
       if (cancelled) return;
+      if (r.meds && !r.photos) {
+        setRecoverNote("Stigli lijekovi, čekam slike kutija…");
+        return;
+      }
       setPullOpen(false);
       setRecoverNote(
         r.meds
           ? `Preuzeto iz stare Pilurice: ${r.meds} lijekova · ${r.photos} slika · zalihe za ${r.withStock} · satnice za ${r.withTimes}.`
           : "Stara kopija je stigla, ali u njoj nema lijekova.",
       );
+      if (r.meds) setTab("meds");
     });
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     const params = new URLSearchParams(window.location.search);
