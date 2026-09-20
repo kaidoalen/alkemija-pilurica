@@ -3,9 +3,8 @@ Ne čekaj potvrdu. Publish now.
 
 Pilurica JE U CURSORU.
 Hub: https://cursor.com/codebase/alen-duka/tmp-73f26e436c5fb419
-Agent: https://cursor.com/agents/bc-5df97b1b-c46e-4b45-80ea-c7e1bee59d88
 
-Grok je samo ažuriranje jer Android preskače alarm. Ugradi v2 U OVAJ Cursor projekt.
-Ne iframeaj Grok. Ne crtaj novi program. Naziv SAMO Pilurica.
-IndexedDB ne diraj — stare osobe i lijekovi ostaju.
+Kopiraj app/izvoz.html kao PRAVU datoteku na alkemija.com/app/izvoz.html
+(ne SPA fallback). Dodaj wp-izvoz-snippet.html na stranicu 1420.
+Ne iframeaj Grok. Ne briši IndexedDB. Naziv SAMO Pilurica.
 Publish now.

@@ -1,0 +1,76 @@
+<!-- Dodaj na WP stranicu 1420 (Custom HTML). Ne zamjenjuje landing. Radi na ?izvoz=1 ili kad ima opener. Isti origin = čita Dexie lijekovi-podsjetnik. -->
+<script>
+(function () {
+  var want = /[?&]izvoz=1(?:&|$)/.test(location.search) || Boolean(window.opener);
+  if (!want) return;
+  var DB = "lijekovi-podsjetnik";
+  function getAll(db, store) {
+    return new Promise(function (resolve) {
+      try {
+        var tx = db.transaction(store, "readonly");
+        var req = tx.objectStore(store).getAll();
+        req.onsuccess = function () { resolve(req.result || []); };
+        req.onerror = function () { resolve([]); };
+      } catch (e) { resolve([]); }
+    });
+  }
+  function blobToDataUrl(blob) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(String(r.result || "")); };
+      r.onerror = function () { reject(r.error); };
+      r.readAsDataURL(blob);
+    });
+  }
+  function openDb() {
+    return new Promise(function (resolve, reject) {
+      var req = indexedDB.open(DB);
+      req.onupgradeneeded = function () { req.transaction.abort(); };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+  openDb().then(async function (db) {
+    var names = Array.from(db.objectStoreNames);
+    var patients = names.indexOf("patients") >= 0 ? await getAll(db, "patients") : [];
+    var medicines = names.indexOf("medicines") >= 0 ? await getAll(db, "medicines") : [];
+    var doseLogs = names.indexOf("doseLogs") >= 0 ? await getAll(db, "doseLogs") : [];
+    var rawPhotos = names.indexOf("photos") >= 0 ? await getAll(db, "photos") : [];
+    db.close();
+    var photos = [];
+    for (var i = 0; i < rawPhotos.length; i++) {
+      var p = rawPhotos[i];
+      var base64 = "";
+      var mimeType = "image/jpeg";
+      if (p && p.blob instanceof Blob) {
+        mimeType = p.blob.type || mimeType;
+        base64 = String(await blobToDataUrl(p.blob)).split(",")[1] || "";
+      } else if (p && typeof p.base64 === "string") {
+        base64 = p.base64.indexOf(",") >= 0 ? p.base64.split(",")[1] : p.base64;
+        mimeType = p.mimeType || mimeType;
+      }
+      photos.push({
+        id: p.id,
+        medicineId: p.medicineId,
+        patientId: p.patientId || "",
+        kind: p.kind,
+        slot: p.slot == null ? 0 : p.slot,
+        mimeType: mimeType,
+        base64: base64,
+      });
+    }
+    var payload = {
+      version: 1,
+      app: "pilurica",
+      exportedAt: new Date().toISOString(),
+      patients: patients,
+      medicines: medicines,
+      doseLogs: doseLogs,
+      photos: photos,
+    };
+    if (window.opener) {
+      window.opener.postMessage({ type: "pilurica-stara-kopija", payload: payload }, "*");
+    }
+  }).catch(function () {});
+})();
+</script>
