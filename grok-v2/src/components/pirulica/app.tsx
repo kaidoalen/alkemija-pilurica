@@ -95,7 +95,11 @@ export function PiluricaApp() {
     void (async () => {
       await hydrateFromStorage();
       if (cancelled) return;
-      startEngine();
+      try {
+        startEngine();
+      } catch {
+        /* screen first */
+      }
       setStaleRefresh(needsStaleRefresh());
       if (needsWhatsNew()) dismissWhatsNew();
     })();
@@ -204,16 +208,8 @@ export function PiluricaApp() {
     setTab("people");
   }
 
-  if (!snap.hydrated) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center bg-paper text-muted">
-        <CapsuleMark size={36} />
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-dvh bg-paper text-ink">
+    <div className="min-h-dvh bg-paper text-ink" style={{ background: "#f3eee4", color: "#1a1814" }}>
       <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col">
         <header className="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-4">
           <div className="flex items-start justify-between gap-3">
@@ -251,6 +247,17 @@ export function PiluricaApp() {
         </header>
 
         <main className="flex-1 px-5 pb-28">
+          {snap.ringing ? (
+            <div className="mb-5">
+              <AlarmOverlay
+                dose={snap.ringing}
+                now={now}
+                onTaken={() => void resolveTaken(snap.ringing!)}
+                onSnooze={(minutes) => void resolveSnooze(snap.ringing!, minutes)}
+                onMissed={() => void resolveDismiss(snap.ringing!)}
+              />
+            </div>
+          ) : null}
           {recoverNote ? (
             <p className="mb-5 rounded-[20px] bg-cream px-4 py-3 text-sm text-ink text-pretty">
               {recoverNote}
@@ -348,9 +355,9 @@ export function PiluricaApp() {
           }}
           onDelete={
             editing
-              ? (id) => {
+              ? () => {
                   if (editMode === "catalog" && editing) removeCatalogMed(editing);
-                  else removeMed(id);
+                  else if (editing) removeMed(editing.id);
                   setEditing(undefined);
                 }
               : undefined
@@ -368,16 +375,6 @@ export function PiluricaApp() {
             setTab("meds");
           }}
           onClose={() => setPullOpen(false)}
-        />
-      ) : null}
-
-      {snap.ringing ? (
-        <AlarmOverlay
-          dose={snap.ringing}
-          now={now}
-          onTaken={() => void resolveTaken(snap.ringing!)}
-          onSnooze={(minutes) => void resolveSnooze(snap.ringing!, minutes)}
-          onMissed={() => void resolveDismiss(snap.ringing!)}
         />
       ) : null}
     </div>

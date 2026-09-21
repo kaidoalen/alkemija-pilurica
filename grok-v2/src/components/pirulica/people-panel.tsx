@@ -102,13 +102,6 @@ export function PeoplePanel({
           </div>
         </div>
 
-        <LastTakes
-          logs={snap.logs}
-          meds={mine}
-          personName={person.name}
-          onToggleLast={onToggleLastTake}
-        />
-
         {mine.length === 0 ? (
           <div className="rounded-[24px] bg-surface px-5 py-8 text-center shadow-[var(--shadow-card)]">
             <p className="text-sm text-muted text-pretty">
@@ -228,6 +221,15 @@ export function PeoplePanel({
             <p className="text-sm text-muted">Svi definirani lijekovi su već dodani.</p>
           )
         ) : null}
+
+        <LastTakes
+          logs={snap.logs}
+          meds={mine}
+          personName={person.name}
+          title="Povijest uzimanja"
+          limit={30}
+          onToggleLast={onToggleLastTake}
+        />
 
         {snap.people.length > 1 ? (
           <button

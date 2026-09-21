@@ -14,23 +14,27 @@ export function LastTakes({
   meds,
   personName,
   onToggleLast,
+  title = "Zadnja 4 uzimanja",
+  limit = 4,
 }: {
   logs: DoseLog[];
   meds: Med[];
   personName: string;
   onToggleLast: (log: DoseLog) => void;
+  title?: string;
+  limit?: number;
 }) {
   const ids = meds.map((m) => m.id);
-  const taken = recentTakes(logs, ids, 4);
+  const taken = recentTakes(logs, ids, limit);
   const [held, setHeld] = useState<DoseLog | null>(null);
   const heldLive =
     held && !isTaken(logs, held.id) && taken[0]?.id !== held.id ? held : null;
-  const rows = heldLive ? [heldLive, ...taken].slice(0, 4) : taken;
+  const rows = heldLive ? [heldLive, ...taken].slice(0, limit) : taken;
 
   return (
     <section>
       <div className="mb-3 flex items-baseline justify-between gap-2">
-        <h3 className="text-sm font-medium text-ink">Zadnja 4 uzimanja</h3>
+        <h3 className="text-sm font-medium text-ink">{title}</h3>
         {personName ? <p className="text-xs text-muted">{personName}</p> : null}
       </div>
       {rows.length === 0 ? (
@@ -57,6 +61,7 @@ export function LastTakes({
                   </p>
                   <p className="text-xs tabular-nums text-muted">
                     {when(log.resolvedAt || log.scheduledAt)}
+                    {log.dose ? ` · ${log.dose}` : ""}
                   </p>
                 </div>
                 {isLast ? (

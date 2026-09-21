@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { formatHm, nid, sortTimes, startOfDay } from "./ids";
+import { nid, sortTimes } from "./ids";
 import { canTakeDose, nextRingCount, type PlannedDose } from "./schedule";
 import {
   BACKUP_KEY,
@@ -39,7 +39,7 @@ const empty: Snapshot = {
   snoozes: [],
   settings: DEFAULT_SETTINGS,
   ringing: null,
-  hydrated: false,
+  hydrated: true,
 };
 
 let state: Snapshot = empty;
@@ -51,31 +51,35 @@ function emit() {
 
 function persist() {
   if (typeof localStorage === "undefined") return;
-  const unique = dropPersonNamedMeds(state.people, dedupePersonMeds(state.meds)).map((m) => ({
-    ...m,
-    times: sortTimes(m.times || []),
-    days: m.days?.length ? m.days : [0, 1, 2, 3, 4, 5, 6],
-  }));
-  state = { ...state, meds: unique };
-  const payload = persistable();
-  const light = {
-    ...payload,
-    meds: payload.meds.map((m) => ({
-      ...m,
-      photo: m.photo ? `idb:${m.id}` : null,
-      photos: photosOf(m).map((p) => ({ ...p, src: `idb:${m.id}:${p.id}` })),
-    })),
-  };
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(light));
-  } catch {
+    const unique = dropPersonNamedMeds(state.people, dedupePersonMeds(state.meds)).map((m) => ({
+      ...m,
+      times: sortTimes(m.times || []),
+      days: m.days?.length ? m.days : [0, 1, 2, 3, 4, 5, 6],
+    }));
+    state = { ...state, meds: unique, hydrated: true };
+    const payload = persistable();
+    const light = {
+      ...payload,
+      meds: payload.meds.map((m) => ({
+        ...m,
+        photo: m.photo ? `idb:${m.id}` : null,
+        photos: photosOf(m).map((p) => ({ ...p, src: `idb:${m.id}:${p.id}` })),
+      })),
+    };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(light));
     } catch {
-      /* quota */
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(light));
+      } catch {
+        /* quota */
+      }
     }
+    void persistPhotos();
+  } catch {
+    /* keep the screen even if save fails */
   }
-  void persistPhotos();
 }
 
 async function persistPhotos() {
@@ -1351,19 +1355,28 @@ export async function hydrateFromStorage() {
     emit();
     return;
   }
-  ensureRefreshStamp();
-  const fromLs = scanAllLocalStorage();
-  const fromIdb = await collectIndexedDb();
-  let chosen: Snapshot | null = null;
-  if (fromLs) chosen = fromLs;
-  if (fromIdb) chosen = chosen ? mergeSnapshots(chosen, fromIdb) : fromIdb;
-  if (!chosen) {
-    state = { ...empty, hydrated: true };
-    emit();
-    return;
+  try {
+    ensureRefreshStamp();
+    const fromLs = scanAllLocalStorage();
+    const fromIdb = await Promise.race([
+      collectIndexedDb(),
+      new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 2500)),
+    ]);
+    let chosen: Snapshot | null = null;
+    if (fromLs) chosen = fromLs;
+    if (fromIdb) chosen = chosen ? mergeSnapshots(chosen, fromIdb) : fromIdb;
+    if (chosen) {
+      state = await attachPhotos(chosen);
+    }
+  } catch {
+    /* still show the raspored */
   }
-  state = await attachPhotos(chosen);
-  persist();
+  state = { ...state, hydrated: true };
+  try {
+    persist();
+  } catch {
+    /* quota */
+  }
   emit();
 }
 
@@ -1629,15 +1642,10 @@ export function saveCatalogMed(prev: Med | null, next: Med) {
     return;
   }
   const oldKey = medKey(prev);
-  const slotFix =
-    sortTimes(prev.times).join() !== sortTimes(next.times).join()
-      ? dropTakenOnOldTimes(prev.id, next.times)
-      : {};
-  const base = slotFix.meds ?? state.meds;
+  const times = sortTimes(next.times);
   set({
-    ...slotFix,
-    meds: base.map((m) => {
-      if (m.id === next.id) return { ...next, times: sortTimes(next.times) };
+    meds: state.meds.map((m) => {
+      if (m.id === next.id) return { ...next, times };
       if (medKey(m) !== oldKey) return m;
       return {
         ...m,
@@ -1653,6 +1661,10 @@ export function saveCatalogMed(prev: Med | null, next: Med) {
         expiry: next.expiry,
       };
     }),
+    snoozes:
+      sortTimes(prev.times).join() === times.join()
+        ? state.snoozes
+        : state.snoozes.filter((s) => s.medId !== next.id),
   });
 }
 
@@ -1665,37 +1677,6 @@ export function removeCatalogMed(med: Med) {
   });
 }
 
-function dropTakenOnOldTimes(medId: string, keepTimes: string[]): Partial<Snapshot> {
-  const keep = new Set(sortTimes(keepTimes));
-  const day0 = startOfDay().getTime();
-  const day1 = day0 + 86_400_000;
-  const dropped: DoseLog[] = [];
-  const logs = state.logs.filter((l) => {
-    if (l.medId !== medId || l.result !== "taken") return true;
-    if (l.scheduledAt < day0 || l.scheduledAt >= day1) return true;
-    if (keep.has(formatHm(l.scheduledAt))) return true;
-    dropped.push(l);
-    return false;
-  });
-  if (!dropped.length) return {};
-  const med = state.meds.find((m) => m.id === medId);
-  const add = (med?.tabletsPerDose || 1) * dropped.length;
-  const meds =
-    med && med.stock != null
-      ? state.meds.map((m) =>
-          m.id === medId ? { ...m, stock: (m.stock ?? 0) + add } : m,
-        )
-      : state.meds;
-  const gone = new Set(dropped.map((l) => l.id));
-  return {
-    logs,
-    meds,
-    snoozes: state.snoozes.filter((s) => !gone.has(s.occurrenceId)),
-    ringing:
-      state.ringing && gone.has(state.ringing.occurrenceId) ? null : state.ringing,
-  };
-}
-
 export function upsertMed(med: Med) {
   const next = { ...med, times: sortTimes(med.times) };
   const key = medKey(next);
@@ -1703,26 +1684,23 @@ export function upsertMed(med: Med) {
     (m) => m.personId === next.personId && medKey(m) === key && m.id !== next.id,
   );
   const prev = twin ?? state.meds.find((m) => m.id === next.id);
-  const slotFix =
-    prev && sortTimes(prev.times).join() !== next.times.join()
-      ? dropTakenOnOldTimes(prev.id, next.times)
-      : {};
+  const timesMoved = Boolean(prev && sortTimes(prev.times).join() !== next.times.join());
   if (twin) {
     const merged = richerMed(twin, { ...next, id: twin.id, personId: twin.personId });
-    const base = slotFix.meds ?? state.meds;
     set({
-      ...slotFix,
-      meds: base
+      meds: state.meds
         .filter((m) => m.id !== next.id)
         .map((m) => (m.id === twin.id ? merged : m)),
+      snoozes: timesMoved
+        ? state.snoozes.filter((s) => s.medId !== twin.id && s.medId !== next.id)
+        : state.snoozes,
     });
     return;
   }
   const exists = state.meds.some((m) => m.id === next.id);
-  const base = slotFix.meds ?? state.meds;
   set({
-    ...slotFix,
-    meds: exists ? base.map((m) => (m.id === next.id ? next : m)) : [...base, next],
+    meds: exists ? state.meds.map((m) => (m.id === next.id ? next : m)) : [...state.meds, next],
+    snoozes: timesMoved ? state.snoozes.filter((s) => s.medId !== next.id) : state.snoozes,
   });
 }
 

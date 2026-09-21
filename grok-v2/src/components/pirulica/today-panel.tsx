@@ -3,6 +3,7 @@ import { formatHm } from "@/lib/pirulica/ids";
 import {
   canTakeDose,
   isTaken,
+  lastTakesPerMed,
   nextUpcoming,
   remainingLabel,
   todayPlan,
@@ -13,7 +14,6 @@ import { UPUTE } from "@/lib/pirulica/upute";
 import type { Med } from "@/lib/pirulica/types";
 import { Button } from "@/components/ui/button";
 import { HowTo } from "./how-to";
-import { LastTakes } from "./last-takes";
 import { CapsuleMark, colorDot } from "./capsule";
 
 export function TodayPanel({
@@ -47,20 +47,34 @@ export function TodayPanel({
     scheduledAt: number;
   }) => void;
 }) {
-  const plan = todayPlan(meds, now);
+  const plan = todayPlan(meds, now, snap.logs);
   const next = nextUpcoming(meds, snap.logs, snap.snoozes, now);
-  const remaining = plan.filter((d) => !isTaken(snap.logs, d.occurrenceId));
-  const takenRows = plan
-    .filter((d) => isTaken(snap.logs, d.occurrenceId))
-    .sort((a, b) => {
-      const ta =
-        snap.logs.find((l) => l.id === a.occurrenceId && l.result === "taken")
-          ?.resolvedAt ?? a.at;
-      const tb =
-        snap.logs.find((l) => l.id === b.occurrenceId && l.result === "taken")
-          ?.resolvedAt ?? b.at;
-      return tb - ta || b.at - a.at;
-    });
+  const remaining = plan
+    .filter((d) => !isTaken(snap.logs, d.occurrenceId))
+    .sort((a, b) => a.at - b.at);
+  const recentLogs = lastTakesPerMed(
+    snap.logs,
+    meds.map((m) => m.id),
+    now,
+    3,
+  );
+  const takenRows = recentLogs.map((log) => {
+    const med = meds.find((m) => m.id === log.medId);
+    const hit = plan.find((d) => d.occurrenceId === log.id);
+    return (
+      hit ?? {
+        occurrenceId: log.id,
+        medId: log.medId,
+        personId: med?.personId ?? "",
+        personName: personName,
+        name: log.name || med?.name || "",
+        dose: log.dose || med?.dose || "",
+        color: med?.color ?? "pine",
+        tabletsPerDose: med?.tabletsPerDose || 1,
+        at: log.scheduledAt || log.resolvedAt,
+      }
+    );
+  });
   const rows = [...remaining, ...takenRows];
   const alerts = meds.filter(
     (m) => stockWarning(m) !== "none" || expiryWarning(m, now) !== "none",
@@ -150,27 +164,22 @@ export function TodayPanel({
         </section>
       ) : null}
 
-      <LastTakes
-        logs={snap.logs}
-        meds={meds}
-        personName={personName}
-        onToggleLast={onToggleLastTake}
-      />
-
       <section>
         <div className="mb-3 flex items-baseline justify-between">
           <h3 className="text-sm font-medium text-ink">Raspored</h3>
           <p className="text-xs text-muted tabular-nums">
-            {plan.length - remaining.length}/{plan.length || 0}
+            {takenRows.length} uzeto / {remaining.length} ostalo
           </p>
         </div>
-        {plan.length === 0 ? (
+        {rows.length === 0 ? (
           <p className="text-sm text-muted">Nema rasporeda za ovaj dan.</p>
         ) : (
           <ul className="space-y-2">
             {rows.map((dose) => {
               const taken = isTaken(snap.logs, dose.occurrenceId);
               const overdue = !taken && dose.at < now - 60_000;
+              const newestTaken = taken && takenRows[0]?.occurrenceId === dose.occurrenceId;
+              const log = recentLogs.find((l) => l.id === dose.occurrenceId);
               return (
                 <li
                   key={dose.occurrenceId}
@@ -188,7 +197,15 @@ export function TodayPanel({
                     ) : null}
                   </div>
                   <p className="text-sm tabular-nums text-muted">{formatHm(dose.at)}</p>
-                  {taken ? (
+                  {taken && newestTaken && log ? (
+                    <button
+                      type="button"
+                      onClick={() => onToggleLastTake(log)}
+                      className="h-11 min-w-16 rounded-full bg-pine px-4 text-sm font-medium text-pine-fg"
+                    >
+                      Uzeto
+                    </button>
+                  ) : taken ? (
                     <span className="grid h-11 min-w-11 place-items-center rounded-full bg-pine/10 px-3 text-xs font-medium text-pine">
                       Uzeto
                     </span>

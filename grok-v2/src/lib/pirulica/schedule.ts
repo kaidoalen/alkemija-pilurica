@@ -80,10 +80,72 @@ export function applySnoozes(planned: PlannedDose[], snoozes: PlannedDose[]): Pl
   return out.sort((a, b) => a.at - b.at || a.name.localeCompare(b.name, "hr"));
 }
 
-export function todayPlan(meds: Med[], now = Date.now()): PlannedDose[] {
+export function todayPlan(meds: Med[], now = Date.now(), logs: DoseLog[] = []): PlannedDose[] {
   const start = startOfDay(now).getTime();
   const end = addDays(startOfDay(now), 1).getTime();
-  return planWindow(meds, now, 2).filter((d) => d.at >= start && d.at < end);
+  const raw = planWindow(meds, now, 2).filter((d) => d.at >= start && d.at < end);
+  if (!logs.length) return raw;
+  const out: PlannedDose[] = [];
+  for (const med of meds) {
+    out.push(...fitDay(med, raw.filter((d) => d.medId === med.id), logs, now, true));
+  }
+  return out.sort((a, b) => a.at - b.at || a.name.localeCompare(b.name, "hr"));
+}
+
+export function takesOnDay(logs: DoseLog[], medId: string, dayStart: number): DoseLog[] {
+  const end = dayStart + 86_400_000;
+  return logs
+    .filter((l) => {
+      if (l.medId !== medId || l.result !== "taken") return false;
+      const t = l.resolvedAt || l.scheduledAt;
+      return t >= dayStart && t < end;
+    })
+    .sort((a, b) => (a.resolvedAt || a.scheduledAt) - (b.resolvedAt || b.scheduledAt));
+}
+
+/** Keep already-taken rows, then only as many leftover satnice as the new count still allows. */
+function fitDay(
+  med: Med,
+  slots: PlannedDose[],
+  logs: DoseLog[],
+  now: number,
+  includeTaken: boolean,
+): PlannedDose[] {
+  const dayStart = startOfDay(now).getTime();
+  const takes = takesOnDay(logs, med.id, dayStart);
+  const takenIds = new Set(takes.map((l) => l.id));
+  const lastTake = takes.length
+    ? Math.max(...takes.map((l) => l.resolvedAt || l.scheduledAt))
+    : lastTakenAt(logs, med.id);
+  const quota = Math.max(0, med.times.length - takes.length);
+  const out: PlannedDose[] = [];
+  if (includeTaken) {
+    for (const s of slots) {
+      if (takenIds.has(s.occurrenceId)) out.push(s);
+    }
+    for (const log of takes) {
+      if (slots.some((s) => s.occurrenceId === log.id)) continue;
+      out.push({
+        occurrenceId: log.id,
+        medId: log.medId,
+        personId: med.personId,
+        personName: "",
+        name: log.name || med.name,
+        dose: log.dose || med.dose,
+        color: med.color,
+        tabletsPerDose: med.tabletsPerDose || 1,
+        at: log.scheduledAt || log.resolvedAt,
+      });
+    }
+  }
+  if (quota <= 0) return out;
+  const leftover = slots
+    .filter((s) => !takenIds.has(s.occurrenceId))
+    .filter((s) => lastTake == null || s.at >= lastTake + MIN_GAP_MS)
+    .sort((a, b) => a.at - b.at)
+    .slice(0, quota);
+  out.push(...leftover);
+  return out;
 }
 
 export function lastTakenAt(logs: DoseLog[], medId: string): number | null {
@@ -127,6 +189,33 @@ export function recentTakes(
     .slice(0, limit);
 }
 
+/** Last 3 takes of each medicine in the last 24 h, newest first. */
+export function lastTakesPerMed(
+  logs: DoseLog[],
+  medIds: Set<string> | string[],
+  now = Date.now(),
+  perMed = 3,
+  windowMs = 24 * 60 * 60 * 1000,
+): DoseLog[] {
+  const ids = medIds instanceof Set ? medIds : new Set(medIds);
+  const from = now - windowMs;
+  const buckets = new Map<string, DoseLog[]>();
+  for (const log of logs) {
+    if (log.result !== "taken" || !ids.has(log.medId)) continue;
+    const t = log.resolvedAt || log.scheduledAt;
+    if (t < from) continue;
+    const list = buckets.get(log.medId) ?? [];
+    list.push(log);
+    buckets.set(log.medId, list);
+  }
+  const out: DoseLog[] = [];
+  for (const list of buckets.values()) {
+    list.sort((a, b) => (b.resolvedAt || b.scheduledAt) - (a.resolvedAt || a.scheduledAt));
+    out.push(...list.slice(0, perMed));
+  }
+  return out.sort((a, b) => (b.resolvedAt || b.scheduledAt) - (a.resolvedAt || a.scheduledAt));
+}
+
 /** Satnica has arrived, and it is at least 3 h since this medicine was last taken. */
 export function canTakeDose(
   dose: PlannedDose,
@@ -151,14 +240,35 @@ export function watchUpcoming(
   now = Date.now(),
 ): PlannedDose[] {
   const taken = takenKeys(logs, now);
-  const planned = planWindow(meds, now - MAX_GAP_MS, 8);
-  return applySnoozes(planned, snoozes).filter((d) => {
-    if (taken.has(d.occurrenceId)) return false;
-    if (d.at < now - MAX_GAP_MS) return false;
+  const planned = applySnoozes(planWindow(meds, now - MAX_GAP_MS, 8), snoozes);
+  const byMed = new Map<string, PlannedDose[]>();
+  for (const d of planned) {
+    if (taken.has(d.occurrenceId)) continue;
+    if (d.at < now - MAX_GAP_MS) continue;
     const last = lastTakenAt(logs, d.medId);
-    if (last != null && d.at < last + MIN_GAP_MS && d.at <= last) return false;
-    return true;
-  });
+    if (last != null && d.at < last + MIN_GAP_MS) continue;
+    const list = byMed.get(d.medId) ?? [];
+    list.push(d);
+    byMed.set(d.medId, list);
+  }
+  const out: PlannedDose[] = [];
+  for (const med of meds) {
+    const slots = (byMed.get(med.id) ?? []).sort((a, b) => a.at - b.at);
+    const grouped = new Map<number, PlannedDose[]>();
+    for (const s of slots) {
+      const day = startOfDay(s.at).getTime();
+      const list = grouped.get(day) ?? [];
+      list.push(s);
+      grouped.set(day, list);
+    }
+    for (const [day, list] of grouped) {
+      const took = takesOnDay(logs, med.id, day).length;
+      const quota = Math.max(0, med.times.length - took);
+      if (quota <= 0) continue;
+      out.push(...list.slice(0, quota));
+    }
+  }
+  return out.sort((a, b) => a.at - b.at || a.name.localeCompare(b.name, "hr"));
 }
 
 /**

@@ -5,9 +5,11 @@ import {
   applySnoozes,
   canTakeDose,
   dueUnacked,
+  lastTakesPerMed,
   nextUpcoming,
   recentTakes,
   remainingLabel,
+  todayPlan,
   watchUpcoming,
   type PlannedDose,
 } from "./schedule.ts";
@@ -63,10 +65,11 @@ function takenLog(at: number, medId = "m1") {
   };
 }
 
-test("spacedTimes splits 24h evenly and sorts", () => {
+test("spacedTimes keeps first and last in the same day", () => {
   assert.deepEqual(spacedTimes(1), ["08:00"]);
   assert.deepEqual(spacedTimes(2), ["08:00", "20:00"]);
-  assert.deepEqual(spacedTimes(3), ["00:00", "08:00", "16:00"]);
+  assert.deepEqual(spacedTimes(3), ["08:00", "14:00", "20:00"]);
+  assert.deepEqual(spacedTimes(4), ["08:00", "12:00", "16:00", "20:00"]);
   assert.deepEqual(sortTimes(["20:00", "08:00", "08:00"]), ["08:00", "20:00"]);
 });
 
@@ -160,6 +163,39 @@ test("watchUpcoming skips a taken satnica and keeps the next one", () => {
   );
   assert.equal(list.some((d) => d.occurrenceId === occurrenceId("m1", morning)), false);
   assert.equal(list.some((d) => d.at === atOnDay(new Date(2026, 8, 20), "20:00")), true);
+});
+
+test("after two takes, only leftover satnice remain — off-grid take stays in history", () => {
+  const day = new Date(2026, 8, 20);
+  const now = atOnDay(day, "13:00");
+  const eight = atOnDay(day, "08:00");
+  const noon = atOnDay(day, "12:00");
+  const m = med({ times: ["08:00", "14:00", "20:00"] });
+  const logs = [takenLog(eight), takenLog(noon)];
+  const plan = todayPlan([m], now, logs);
+  assert.equal(plan.filter((d) => d.at === eight || d.at === noon).length, 2);
+  assert.equal(
+    plan.some((d) => d.at === atOnDay(day, "14:00")),
+    false,
+  );
+  assert.equal(
+    plan.some((d) => d.at === atOnDay(day, "20:00")),
+    true,
+  );
+  const upcoming = watchUpcoming([m], logs, [], now);
+  assert.equal(
+    upcoming.filter((d) => d.at < atOnDay(day, "23:59") && d.at >= atOnDay(day, "00:00")).length,
+    1,
+  );
+});
+
+test("raspored keeps last 3 takes per medicine in 24 h", () => {
+  const t0 = atOnDay(new Date(2026, 8, 20), "08:00");
+  const logs = [0, 1, 2, 3, 4].map((i) => takenLog(t0 + i * 60 * 60 * 1000));
+  const recent = lastTakesPerMed(logs, ["m1"], t0 + 10 * 60 * 60 * 1000, 3);
+  assert.equal(recent.length, 3);
+  assert.equal(recent[0].scheduledAt, t0 + 4 * 60 * 60 * 1000);
+  assert.equal(recent[2].scheduledAt, t0 + 2 * 60 * 60 * 1000);
 });
 
 test("recentTakes lists the last four takes newest first", () => {

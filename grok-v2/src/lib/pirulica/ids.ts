@@ -40,11 +40,22 @@ export function spacedTimes(count: number, startHm = "08:00"): string[] {
   const n = Math.max(1, Math.min(8, Math.round(count) || 1));
   const start = parseHm(startHm) ?? { hours: 8, minutes: 0 };
   const origin = start.hours * 60 + start.minutes;
-  const step = Math.round((24 * 60) / n);
+  const hm = (mins: number) => {
+    const m = ((mins % (24 * 60)) + 24 * 60) % (24 * 60);
+    return `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
+  };
+  if (n === 1) return [hm(origin)];
+
+  const dayEnd = 22 * 60;
+  const spanWanted = Math.max(12 * 60, (n - 1) * 3 * 60);
+  let last = origin + spanWanted;
+  if (last > dayEnd) last = Math.max(origin + 60, dayEnd);
+  if (last <= origin) last = origin + spanWanted;
+
+  const step = (last - origin) / (n - 1);
   const out: string[] = [];
   for (let i = 0; i < n; i += 1) {
-    const m = (origin + i * step) % (24 * 60);
-    out.push(`${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`);
+    out.push(hm(Math.round(origin + i * step)));
   }
   return sortTimes(out);
 }
